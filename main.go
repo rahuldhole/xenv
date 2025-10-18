@@ -80,34 +80,45 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Check if output file exists and ask for confirmation
+	mergeMode := false
 	if _, err := os.Stat(outputFile); err == nil {
-		fmt.Printf("Output file '%s' already exists. Overwrite? [y/N]: ", outputFile)
+		fmt.Printf("Output file '%s' already exists. Overwrite, merge, or cancel? [y/N/m (merge)]: ", outputFile)
 		reader := bufio.NewReader(os.Stdin)
 		response, _ := reader.ReadString('\n')
 		response = strings.TrimSpace(strings.ToLower(response))
-
-		if response != "y" && response != "yes" {
+		switch response {
+		case "y", "yes":
+			// overwrite: truncate now
+			f, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+			if err != nil {
+				fmt.Printf("Error: Cannot overwrite '%s': %v\n", outputFile, err)
+				os.Exit(1)
+			}
+			f.Close()
+			fmt.Println("Overwrite selected.")
+		case "m", "merge":
+			mergeMode = true
+			fmt.Println("Merge selected. Existing values will be used as 'current' and conflicts shown.")
+			// Do NOT truncate here; we will read existing values and later rewrite file.
+		default:
 			fmt.Println("Operation cancelled.")
 			os.Exit(0)
 		}
+	} else {
+		// New file: create placeholder (truncate semantic)
+		f, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		if err != nil {
+			fmt.Printf("Error: Cannot create output file '%s': %v\n", outputFile, err)
+			os.Exit(1)
+		}
+		f.Close()
 	}
 
-	// Try to create/truncate the output file before wizard begins
-	f, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Printf("Error: Cannot create or write to output file '%s': %v\n", outputFile, err)
-		os.Exit(1)
-	}
-	f.Close()
-
-	// Check if file has any DSL directives
 	hasDSL := checkForDSL(formFile)
-
 	fmt.Printf("Interactive configuration for %s\n", filepath.Base(formFile))
 	fmt.Println(strings.Repeat("-", 50))
 
-	outputLines, err := processFormFile(formFile, outputFile, hasDSL)
+	outputLines, err := processFormFile(formFile, outputFile, hasDSL, mergeMode)
 	if err != nil {
 		fmt.Printf("Error processing form file: %v\n", err)
 		os.Exit(1)
@@ -171,12 +182,28 @@ func checkForDSL(formFile string) bool {
 	return false
 }
 
-func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error) {
+func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) ([]string, error) {
 	file, err := os.Open(formFile)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
+
+	existingOutVars := make(map[string]string)
+	if mergeMode {
+		if st, err := os.Stat(outputFile); err == nil && st.Size() > 0 {
+			if fOut, err := os.Open(outputFile); err == nil {
+				sc := bufio.NewScanner(fOut)
+				kvRe := regexp.MustCompile(`^([^=]+)=(.*)$`)
+				for sc.Scan() {
+					if m := kvRe.FindStringSubmatch(sc.Text()); len(m) > 2 {
+						existingOutVars[m[1]] = m[2]
+					}
+				}
+				fOut.Close()
+			}
+		}
+	}
 
 	scanner := bufio.NewScanner(file)
 	keyValueRegex := regexp.MustCompile(`^([^=]+)=(.*)$`)
@@ -184,9 +211,9 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 	var currentFieldInfo *FieldInfo
 	skipMode := false
 	hiddenNext := false
-
 	envVars := make(map[string]string)
-	// Preload all key-value pairs for env injection
+
+	// Preload template key/value for env injection
 	file.Seek(0, 0)
 	scannerEnv := bufio.NewScanner(file)
 	for scannerEnv.Scan() {
@@ -199,7 +226,6 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 
 	for scanner.Scan() {
 		line := scanner.Text()
-
 		if strings.HasPrefix(line, "#") {
 			fieldInfo := parseFieldDirective(line)
 			if fieldInfo != nil {
@@ -218,8 +244,18 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 
 		if matches := keyValueRegex.FindStringSubmatch(line); len(matches) > 0 {
 			key := matches[1]
-			defaultValue := matches[2]
-			existingValue := getExistingValue(key, defaultValue, outputFile)
+			templateDefault := matches[2]
+
+			currentOutputValue, hasExisting := existingOutVars[key]
+			existingValue := templateDefault
+			if mergeMode && hasExisting {
+				existingValue = currentOutputValue
+			}
+
+			conflictSuffix := ""
+			if mergeMode && hasExisting && currentOutputValue != templateDefault {
+				conflictSuffix = fmt.Sprintf(" (current: %s | template: %s)", currentOutputValue, templateDefault)
+			}
 
 			if skipMode {
 				outputLines = append(outputLines, key+"="+existingValue)
@@ -228,14 +264,22 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 				hiddenNext = false
 			} else if currentFieldInfo != nil && currentFieldInfo.Type != NoField {
 				if currentFieldInfo.Readonly {
-					fmt.Printf("%s (readonly): %s\n", currentFieldInfo.Label, existingValue)
+					label := currentFieldInfo.Label
+					if label == "" {
+						label = key
+					}
+					if conflictSuffix != "" {
+						fmt.Printf("%s%s (readonly): %s\n", label, conflictSuffix, existingValue)
+					} else {
+						fmt.Printf("%s (readonly): %s\n", label, existingValue)
+					}
 					outputLines = append(outputLines, key+"="+existingValue)
 					currentFieldInfo = nil
 					continue
 				}
 				if currentFieldInfo.Script != "" {
-					fmt.Printf("This script will run the following shell script:\n")
-					fmt.Print("Do you want to run this script? [y/N/v (view)]: ")
+					fmt.Printf("Script for %s%s\n", key, conflictSuffix)
+					fmt.Print("Run script? [y/N/v (view)]: ")
 					reader := bufio.NewReader(os.Stdin)
 					resp, _ := reader.ReadString('\n')
 					resp = strings.TrimSpace(strings.ToLower(resp))
@@ -247,25 +291,22 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 						resp = strings.TrimSpace(strings.ToLower(resp))
 					}
 					if resp == "y" || resp == "yes" {
-						// Prepare environment with all vars from previous answers (outputLines) and file
 						env := os.Environ()
-						// Add previous answers (outputLines) first, so they override file values
 						for _, l := range outputLines {
-							if kv := regexp.MustCompile(`^([^=]+)=(.*)$`).FindStringSubmatch(l); len(kv) > 0 {
+							if kv := regexp.MustCompile(`^([^=]+)=(.*)$`).FindStringSubmatch(l); len(kv) > 2 {
 								env = append(env, fmt.Sprintf("%s=%s", kv[1], kv[2]))
 							}
 						}
-						// Add file values (envVars) if not already present
-						for k, v := range envVars {
+						for k2, v2 := range envVars {
 							found := false
 							for _, e := range env {
-								if strings.HasPrefix(e, k+"=") {
+								if strings.HasPrefix(e, k2+"=") {
 									found = true
 									break
 								}
 							}
 							if !found {
-								env = append(env, fmt.Sprintf("%s=%s", k, v))
+								env = append(env, fmt.Sprintf("%s=%s", k2, v2))
 							}
 						}
 						cmd := exec.Command("sh", "-c", currentFieldInfo.Script)
@@ -280,12 +321,15 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 						currentFieldInfo = nil
 						continue
 					} else {
-						fmt.Println("Skipped running the script.")
+						fmt.Println("Skipped script.")
 					}
 				}
 				label := currentFieldInfo.Label
 				if label == "" {
 					label = key
+				}
+				if conflictSuffix != "" {
+					label += conflictSuffix
 				}
 				val, err := promptForValue(currentFieldInfo, label, existingValue)
 				if err != nil {
@@ -295,7 +339,11 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 				envVars[key] = val
 				currentFieldInfo = nil
 			} else if !hasDSL || key == "PLAIN_TEXT_VAR" {
-				val, err := promptInput(key, existingValue)
+				label := key
+				if conflictSuffix != "" {
+					label += conflictSuffix
+				}
+				val, err := promptInput(label, existingValue)
 				if err != nil {
 					return nil, err
 				}
@@ -313,7 +361,6 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-
 	return outputLines, nil
 }
 
