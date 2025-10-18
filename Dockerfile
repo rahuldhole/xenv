@@ -13,4 +13,4 @@ COPY . .
 # Set the entrypoint to run xenv.rb with a form file argument
 # (You can override the CMD when running the container)
 ENTRYPOINT ["ruby", "xenv.rb"]
-CMD ["env.form"]
+CMD ["env.xenv"]
