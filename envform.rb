@@ -10,7 +10,11 @@ if ARGV.length < 1
 end
 
 FORM_FILE = ARGV[0]
-OUTPUT_FILE = FORM_FILE.sub(/\.form$/, '')
+if File.basename(FORM_FILE) =~ /\.form$/
+  OUTPUT_FILE = File.join(File.dirname(FORM_FILE), "." + File.basename(FORM_FILE, ".form"))
+else
+  OUTPUT_FILE = FORM_FILE
+end
 
 unless File.exist?(FORM_FILE)
   puts "Error: Form file '#{FORM_FILE}' not found."
