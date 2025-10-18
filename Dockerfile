@@ -10,7 +10,7 @@ RUN bundle install
 # Copy the rest of the app
 COPY . .
 
-# Set the entrypoint to run envform.rb with a form file argument
+# Set the entrypoint to run xenv.rb with a form file argument
 # (You can override the CMD when running the container)
-ENTRYPOINT ["ruby", "envform.rb"]
+ENTRYPOINT ["ruby", "xenv.rb"]
 CMD ["env.form"]

@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
-# EnvForm - Interactive environment variable configuration tool
-# Usage: ruby envform.rb env.form
+# xenv - Interactive environment variable configuration tool
+# Usage: ruby xenv.rb env.xenv
 
 require 'io/console'
 
@@ -10,8 +10,8 @@ if ARGV.length < 1
 end
 
 FORM_FILE = ARGV[0]
-if File.basename(FORM_FILE) =~ /\.form$/
-  OUTPUT_FILE = File.join(File.dirname(FORM_FILE), "." + File.basename(FORM_FILE, ".form"))
+if File.basename(FORM_FILE) =~ /\.xenv$/
+  OUTPUT_FILE = File.join(File.dirname(FORM_FILE), "." + File.basename(FORM_FILE, ".xenv"))
 else
   OUTPUT_FILE = FORM_FILE
 end

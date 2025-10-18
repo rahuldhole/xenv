@@ -1,7 +1,7 @@
-# EnvForm
+# xenv
 
 ## Overview
-EnvForm is an interactive Ruby CLI tool for configuring environment variable files using a simple `.form` template. It guides users through input, password, select, and checkbox prompts, then writes the results to a `.env`-style file.
+xenv is an interactive Ruby CLI tool for configuring environment variable files using a simple `.form` template. It guides users through input, password, select, and checkbox prompts, then writes the results to a `.env`-style file.
 
 ## Installation
 
@@ -9,7 +9,7 @@ Clone the repository and install dependencies:
 
 ```bash
 git clone [repository-url]
-cd envform
+cd xenv
 bundle install
 ```
 
@@ -20,7 +20,7 @@ bundle install
 To run the tool directly:
 
 ```bash
-ruby envform.rb your.env.form
+ruby xenv.rb your.env.form
 ```
 
 ### With Docker
@@ -28,13 +28,13 @@ ruby envform.rb your.env.form
 Build the Docker image:
 
 ```bash
-docker build -t envform .
+docker build -t xenv .
 ```
 
 Run the tool (replace `your.env.form` with your form file):
 
 ```bash
-docker run -it --rm -v "$PWD":/app envform your.env.form
+docker run -it --rm -v "$PWD":/app xenv your.env.form
 ```
 
 This will interactively prompt you for values and write the output file (e.g., `.env`) in your current directory.
