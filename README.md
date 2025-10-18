@@ -102,6 +102,26 @@ Each directive should be placed in a comment line directly above the variable de
 
 See the `examples/` directory for sample configuration templates.
 
+## Building Platform-Independent Binaries
+
+You can build binaries for different platforms using Go's cross-compilation:
+
+```sh
+# Linux (amd64)
+GOOS=linux GOARCH=amd64 go build -o xenv-linux-amd64
+
+# macOS (amd64)
+GOOS=darwin GOARCH=amd64 go build -o xenv-darwin-amd64
+
+# macOS (Apple Silicon)
+GOOS=darwin GOARCH=arm64 go build -o xenv-darwin-arm64
+
+# Windows (amd64)
+GOOS=windows GOARCH=amd64 go build -o xenv-windows-amd64.exe
+```
+
+You can set `GOOS` and `GOARCH` to any valid Go target. See the [Go documentation](https://golang.org/doc/install/source#environment) for more options.
+
 ## License
 
 MIT
