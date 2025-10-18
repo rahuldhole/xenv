@@ -129,15 +129,9 @@ func main() {
 	}
 
 	mergeMode := false
-	// --- UPDATED: non-interactive overwrite/merge logic ---
+	
 	if _, err := os.Stat(outputFile); err == nil {
 		if forceOverwrite {
-			f, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-			if err != nil {
-				fmt.Printf("Error: Cannot overwrite '%s': %v\n", outputFile, err)
-				os.Exit(1)
-			}
-			f.Close()
 			fmt.Println("Overwrite (force) selected.")
 		} else if preMerge {
 			mergeMode = true
@@ -150,12 +144,6 @@ func main() {
 			response = strings.TrimSpace(strings.ToLower(response))
 			switch response {
 			case "y", "yes":
-				f, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-				if err != nil {
-					fmt.Printf("Error: Cannot overwrite '%s': %v\n", outputFile, err)
-					os.Exit(1)
-				}
-				f.Close()
 				fmt.Println("Overwrite selected.")
 			case "m", "merge":
 				mergeMode = true
@@ -165,26 +153,20 @@ func main() {
 				os.Exit(0)
 			}
 		}
-	} else {
-		// New file
-		f, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-		if err != nil {
-			fmt.Printf("Error: Cannot create output file '%s': %v\n", outputFile, err)
-			os.Exit(1)
-		}
-		f.Close()
 	}
 
 	hasDSL := checkForDSL(formFile)
 	fmt.Printf("Interactive configuration for %s\n", filepath.Base(formFile))
 	fmt.Println(strings.Repeat("-", 50))
 
+	// Process reads existing file if present (not truncated yet)
 	outputLines, err := processFormFile(formFile, outputFile, hasDSL, mergeMode, defaultsMode, allScripts)
 	if err != nil {
 		fmt.Printf("Error processing form file: %v\n", err)
 		os.Exit(1)
 	}
 
+	// Write output (os.WriteFile always truncates)
 	err = os.WriteFile(outputFile, []byte(strings.Join(outputLines, "\n")+"\n"), 0644)
 	if err != nil {
 		fmt.Printf("Error writing to output file: %v\n", err)
