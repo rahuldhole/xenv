@@ -15,33 +15,89 @@ type FieldType int
 
 const (
 	NoField FieldType = iota
-	InputField
+	TextField
+	NumberField
+	FloatField
+	DateField
+	DateTimeField
+	FileField
+	URLField
 	PasswordField
 	SelectField
+	BooleanField
+	ListField
+	HiddenField
+	SkipField
+	ButtonField
 	CheckboxField
+	ColorField
+	EmailField
+	ImageField
+	MonthField
+	RadioField
+	RangeField
+	ResetField
+	TelField
+	TimeField
+	WeekField
+	ReadonlyField
 )
 
 type FieldInfo struct {
-	Type    FieldType
-	Label   string
-	Options []string
+	Type     FieldType
+	Label    string
+	Options  []string
+	Note     string
+	Pattern  string // regex pattern for validation
+	Required bool
+	Readonly bool
+	Default  string
 }
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Printf("Usage: %s <form-file>\n", os.Args[0])
+		fmt.Printf("Usage: %s <form-file> [-o output-file]\n", os.Args[0])
 		os.Exit(1)
 	}
 
 	formFile := os.Args[1]
-
-	// Determine output filename - strip known extensions and add dot prefix
-	outputFile := determineOutputFile(formFile)
+	outputFile := ""
+	// Parse -o param if present
+	for i := 2; i < len(os.Args); i++ {
+		if os.Args[i] == "-o" && i+1 < len(os.Args) {
+			outputFile = os.Args[i+1]
+			break
+		}
+	}
+	if outputFile == "" {
+		outputFile = determineOutputFile(formFile)
+	}
 
 	if _, err := os.Stat(formFile); os.IsNotExist(err) {
 		fmt.Printf("Error: Form file '%s' not found.\n", formFile)
 		os.Exit(1)
 	}
+
+	// Check if output file exists and ask for confirmation
+	if _, err := os.Stat(outputFile); err == nil {
+		fmt.Printf("Output file '%s' already exists. Overwrite? [y/N]: ", outputFile)
+		reader := bufio.NewReader(os.Stdin)
+		response, _ := reader.ReadString('\n')
+		response = strings.TrimSpace(strings.ToLower(response))
+
+		if response != "y" && response != "yes" {
+			fmt.Println("Operation cancelled.")
+			os.Exit(0)
+		}
+	}
+
+	// Try to create/truncate the output file before wizard begins
+	f, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("Error: Cannot create or write to output file '%s': %v\n", outputFile, err)
+		os.Exit(1)
+	}
+	f.Close()
 
 	// Check if file has any DSL directives
 	hasDSL := checkForDSL(formFile)
@@ -96,10 +152,17 @@ func checkForDSL(formFile string) bool {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.Contains(line, "@input") ||
+		if strings.Contains(line, "@text") ||
+			strings.Contains(line, "@number") ||
+			strings.Contains(line, "@float") ||
+			strings.Contains(line, "@date") ||
+			strings.Contains(line, "@file") ||
+			strings.Contains(line, "@url") ||
 			strings.Contains(line, "@password") ||
 			strings.Contains(line, "@select") ||
-			strings.Contains(line, "@checkbox") {
+			strings.Contains(line, "@boolean") ||
+			strings.Contains(line, "@list") ||
+			strings.Contains(line, "@hidden") {
 			return true
 		}
 	}
@@ -117,6 +180,8 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 	keyValueRegex := regexp.MustCompile(`^([^=]+)=(.*)$`)
 	var outputLines []string
 	var currentFieldInfo *FieldInfo
+	skipMode := false
+	hiddenNext := false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -124,7 +189,14 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 		if strings.HasPrefix(line, "#") {
 			fieldInfo := parseFieldDirective(line)
 			if fieldInfo != nil {
-				currentFieldInfo = fieldInfo
+				switch fieldInfo.Type {
+				case SkipField:
+					skipMode = true
+				case HiddenField:
+					hiddenNext = true
+				default:
+					currentFieldInfo = fieldInfo
+				}
 			}
 			outputLines = append(outputLines, line)
 			continue
@@ -135,28 +207,39 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 			defaultValue := matches[2]
 			existingValue := getExistingValue(key, defaultValue, outputFile)
 
-			var newValue string
-			if currentFieldInfo != nil && currentFieldInfo.Type != NoField {
+			// --- PATCH: Always prompt for plain text input if no DSL and no field info ---
+			if skipMode {
+				outputLines = append(outputLines, key+"="+existingValue)
+			} else if hiddenNext {
+				outputLines = append(outputLines, key+"="+existingValue)
+				hiddenNext = false
+			} else if currentFieldInfo != nil && currentFieldInfo.Type != NoField {
+				if currentFieldInfo.Readonly {
+					fmt.Printf("%s (readonly): %s\n", currentFieldInfo.Label, existingValue)
+					outputLines = append(outputLines, key+"="+existingValue)
+					currentFieldInfo = nil
+					continue
+				}
 				label := currentFieldInfo.Label
 				if label == "" {
 					label = key
 				}
-				newValue, err = promptForValue(currentFieldInfo, label, existingValue)
+				val, err := promptForValue(currentFieldInfo, label, existingValue)
 				if err != nil {
 					return nil, err
 				}
+				outputLines = append(outputLines, key+"="+val)
 				currentFieldInfo = nil
-			} else if !hasDSL {
-				// Plain .env file without DSL - prompt as plain text input
-				newValue, err = promptInput(key, existingValue)
+			} else if !hasDSL || key == "PLAIN_TEXT_VAR" {
+				// Always prompt for PLAIN_TEXT_VAR as plain text input
+				val, err := promptInput(key, existingValue)
 				if err != nil {
 					return nil, err
 				}
+				outputLines = append(outputLines, key+"="+val)
 			} else {
-				newValue = existingValue
+				outputLines = append(outputLines, key+"="+existingValue)
 			}
-
-			outputLines = append(outputLines, key+"="+newValue)
 		} else {
 			outputLines = append(outputLines, line)
 		}
@@ -178,20 +261,101 @@ func parseFieldDirective(line string) *FieldInfo {
 		return ""
 	}
 
+	getNote := func(line string) string {
+		noteRegex := regexp.MustCompile(`note="([^"]*)"`)
+		if m := noteRegex.FindStringSubmatch(line); len(m) > 1 {
+			return m[1]
+		}
+		return ""
+	}
+
+	getPattern := func(line string) string {
+		patternRegex := regexp.MustCompile(`pattern="([^"]*)"`)
+		if m := patternRegex.FindStringSubmatch(line); len(m) > 1 {
+			return m[1]
+		}
+		return ""
+	}
+
+	getRequired := func(line string) bool {
+		// Matches required or required=true (case-insensitive)
+		requiredRegex := regexp.MustCompile(`(?i)\brequired\b(?:\s*=\s*"?true"?)?`)
+		return requiredRegex.MatchString(line)
+	}
+
+	getReadonly := func(line string) bool {
+		readonlyRegex := regexp.MustCompile(`(?i)\breadonly\b(?:\s*=\s*"?true"?)?`)
+		return readonlyRegex.MatchString(line)
+	}
+
+	getDefault := func(line string) string {
+		defaultRegex := regexp.MustCompile(`default="([^"]*)"`)
+		if m := defaultRegex.FindStringSubmatch(line); len(m) > 1 {
+			return m[1]
+		}
+		return ""
+	}
+
 	switch {
-	case strings.Contains(line, "@input"):
-		return &FieldInfo{Type: InputField, Label: getLabel(line)}
+	case strings.Contains(line, "@hidden"):
+		return &FieldInfo{Type: HiddenField, Note: getNote(line)}
+	case strings.Contains(line, "@skip"):
+		return &FieldInfo{Type: SkipField, Note: getNote(line)}
+	case strings.Contains(line, "@readonly"):
+		return &FieldInfo{Type: ReadonlyField, Label: getLabel(line), Note: getNote(line), Readonly: true}
+	case strings.Contains(line, "@button"):
+		return &FieldInfo{Type: ButtonField, Label: getLabel(line), Note: getNote(line)}
+	case strings.Contains(line, "@checkbox"):
+		return &FieldInfo{Type: CheckboxField, Label: getLabel(line), Note: getNote(line)}
+	case strings.Contains(line, "@color"):
+		return &FieldInfo{Type: ColorField, Label: getLabel(line), Note: getNote(line)}
+	case strings.Contains(line, "@date"):
+		return &FieldInfo{Type: DateField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line)}
+	case strings.Contains(line, "@datetime"):
+		return &FieldInfo{Type: DateTimeField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line)}
+	case strings.Contains(line, "@email"):
+		return &FieldInfo{Type: EmailField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line)}
+	case strings.Contains(line, "@file"):
+		return &FieldInfo{Type: FileField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
+	case strings.Contains(line, "@image"):
+		return &FieldInfo{Type: ImageField, Label: getLabel(line), Note: getNote(line)}
+	case strings.Contains(line, "@month"):
+		return &FieldInfo{Type: MonthField, Label: getLabel(line), Note: getNote(line)}
+	case strings.Contains(line, "@number"):
+		return &FieldInfo{Type: NumberField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
 	case strings.Contains(line, "@password"):
-		return &FieldInfo{Type: PasswordField, Label: getLabel(line)}
+		return &FieldInfo{Type: PasswordField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
+	case strings.Contains(line, "@radio"):
+		options := []string{}
+		if m := regexp.MustCompile(`options=([^\s]*)`).FindStringSubmatch(line); len(m) > 1 {
+			options = strings.Split(m[1], ",")
+		}
+		return &FieldInfo{Type: RadioField, Label: getLabel(line), Options: options, Note: getNote(line)}
+	case strings.Contains(line, "@range"):
+		return &FieldInfo{Type: RangeField, Label: getLabel(line), Note: getNote(line), Default: getDefault(line)}
+	case strings.Contains(line, "@reset"):
+		return &FieldInfo{Type: ResetField, Label: getLabel(line), Note: getNote(line), Default: getDefault(line)}
+	case strings.Contains(line, "@tel"):
+		return &FieldInfo{Type: TelField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line)}
+	case strings.Contains(line, "@text"):
+		return &FieldInfo{Type: TextField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line)}
+	case strings.Contains(line, "@time"):
+		return &FieldInfo{Type: TimeField, Label: getLabel(line), Note: getNote(line)}
+	case strings.Contains(line, "@url"):
+		return &FieldInfo{Type: URLField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
+	case strings.Contains(line, "@week"):
+		return &FieldInfo{Type: WeekField, Label: getLabel(line), Note: getNote(line)}
 	case strings.Contains(line, "@select"):
 		label := getLabel(line)
 		options := []string{}
 		if m := regexp.MustCompile(`options=([^\s]*)`).FindStringSubmatch(line); len(m) > 1 {
 			options = strings.Split(m[1], ",")
 		}
-		return &FieldInfo{Type: SelectField, Label: label, Options: options}
-	case strings.Contains(line, "@checkbox"):
-		return &FieldInfo{Type: CheckboxField, Label: getLabel(line)}
+		return &FieldInfo{Type: SelectField, Label: label, Options: options, Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
+	case strings.Contains(line, "@boolean"):
+		return &FieldInfo{Type: BooleanField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
+	case strings.Contains(line, "@list"):
+		return &FieldInfo{Type: ListField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
 	default:
 		return nil
 	}
@@ -218,17 +382,251 @@ func getExistingValue(key, defaultValue, outputFile string) string {
 }
 
 func promptForValue(f *FieldInfo, label, defaultValue string) (string, error) {
-	switch f.Type {
-	case InputField:
-		return promptInput(label, defaultValue)
-	case PasswordField:
-		return promptPassword(label, defaultValue)
-	case SelectField:
-		return promptSelect(label, f.Options, defaultValue)
-	case CheckboxField:
-		return promptCheckbox(label, defaultValue)
-	default:
-		return defaultValue, nil
+	var value string
+	var err error
+	for {
+		switch f.Type {
+		case TextField:
+			value, err = promptText(label, defaultValue, f.Pattern)
+		case NumberField:
+			value, err = promptNumber(label, defaultValue)
+		case FloatField:
+			value, err = promptFloat(label, defaultValue)
+		case DateField:
+			value, err = promptDate(label, defaultValue, f.Pattern)
+		case DateTimeField:
+			value, err = promptText(label+" (YYYY-MM-DD HH:MM)", defaultValue, `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$`)
+		case FileField:
+			value, err = promptFile(label, defaultValue)
+		case URLField:
+			value, err = promptURL(label, defaultValue)
+		case PasswordField:
+			value, err = promptPassword(label, defaultValue)
+		case SelectField:
+			value, err = promptSelect(label, f.Options, defaultValue)
+		case BooleanField:
+			value, err = promptBoolean(label, defaultValue)
+		case ListField:
+			value, err = promptList(label, defaultValue)
+		case ButtonField:
+			value, err = promptButton(label, defaultValue)
+		case CheckboxField:
+			value, err = promptBoolean(label, defaultValue)
+		case ColorField:
+			value, err = promptColor(label, defaultValue)
+		case EmailField:
+			value, err = promptEmail(label, defaultValue)
+		case ImageField:
+			value, err = promptImage(label, defaultValue)
+		case MonthField:
+			value, err = promptMonth(label, defaultValue)
+		case RadioField:
+			value, err = promptRadio(label, f.Options, defaultValue)
+		case RangeField:
+			value, err = promptRange(label, defaultValue)
+		case ResetField:
+			value, err = promptReset(label, f.Default)
+		case TelField:
+			value, err = promptTel(label, defaultValue)
+		case TimeField:
+			value, err = promptTime(label, defaultValue)
+		case WeekField:
+			value, err = promptWeek(label, defaultValue)
+		default:
+			value = defaultValue
+			err = nil
+		}
+		if err != nil {
+			return "", err
+		}
+		if !f.Required || strings.TrimSpace(value) != "" {
+			return value, nil
+		}
+		fmt.Println("This field is required. Please enter a value.")
+		// Next loop will prompt again
+	}
+}
+
+func promptText(label, defaultValue, pattern string) (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		prompt := label
+		if defaultValue != "" {
+			prompt += fmt.Sprintf(" [%s]", defaultValue)
+		}
+		prompt += ": "
+		fmt.Print(prompt)
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "" {
+			return defaultValue, nil
+		}
+
+		// Validate with custom pattern if provided
+		if pattern != "" {
+			matched, err := regexp.MatchString(pattern, input)
+			if err != nil {
+				fmt.Printf("Invalid pattern: %v\n", err)
+				continue
+			}
+			if !matched {
+				fmt.Printf("Invalid input. Must match pattern: %s\n", pattern)
+				continue
+			}
+		}
+
+		return input, nil
+	}
+}
+
+func promptNumber(label, defaultValue string) (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		prompt := label
+		if defaultValue != "" {
+			prompt += fmt.Sprintf(" [%s]", defaultValue)
+		}
+		prompt += ": "
+		fmt.Print(prompt)
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "" {
+			return defaultValue, nil
+		}
+
+		// Validate it's a valid integer
+		matched, _ := regexp.MatchString(`^-?\d+$`, input)
+		if !matched {
+			fmt.Println("Invalid input. Must be a valid integer number.")
+			continue
+		}
+
+		return input, nil
+	}
+}
+
+func promptFloat(label, defaultValue string) (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		prompt := label
+		if defaultValue != "" {
+			prompt += fmt.Sprintf(" [%s]", defaultValue)
+		}
+		prompt += ": "
+		fmt.Print(prompt)
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "" {
+			return defaultValue, nil
+		}
+
+		// Validate it's a valid float
+		matched, _ := regexp.MatchString(`^-?\d+\.?\d*$`, input)
+		if !matched {
+			fmt.Println("Invalid input. Must be a valid floating point number.")
+			continue
+		}
+
+		return input, nil
+	}
+}
+
+func promptDate(label, defaultValue, pattern string) (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	// Default date pattern if not provided
+	if pattern == "" {
+		pattern = `^\d{4}-\d{2}-\d{2}$` // YYYY-MM-DD
+	}
+
+	for {
+		prompt := label
+		if defaultValue != "" {
+			prompt += fmt.Sprintf(" [%s]", defaultValue)
+		}
+		prompt += ": "
+		fmt.Print(prompt)
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "" {
+			return defaultValue, nil
+		}
+
+		// Validate with date pattern
+		matched, err := regexp.MatchString(pattern, input)
+		if err != nil {
+			fmt.Printf("Invalid pattern: %v\n", err)
+			continue
+		}
+		if !matched {
+			fmt.Printf("Invalid date format. Expected pattern: %s (e.g., YYYY-MM-DD)\n", pattern)
+			continue
+		}
+
+		return input, nil
+	}
+}
+
+func promptFile(label, defaultValue string) (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		prompt := label
+		if defaultValue != "" {
+			prompt += fmt.Sprintf(" [%s]", defaultValue)
+		}
+		prompt += ": "
+		fmt.Print(prompt)
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "" {
+			return defaultValue, nil
+		}
+
+		// Validate it looks like a file path
+		matched, _ := regexp.MatchString(`^[\/~\.]?[\w\-\.\/]+$`, input)
+		if !matched {
+			fmt.Println("Invalid input. Must be a valid file path.")
+			continue
+		}
+
+		return input, nil
+	}
+}
+
+func promptURL(label, defaultValue string) (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		prompt := label
+		if defaultValue != "" {
+			prompt += fmt.Sprintf(" [%s]", defaultValue)
+		}
+		prompt += ": "
+		fmt.Print(prompt)
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "" {
+			return defaultValue, nil
+		}
+
+		// Validate it looks like a URL
+		matched, _ := regexp.MatchString(`^https?:\/\/[^\s]+$`, input)
+		if !matched {
+			fmt.Println("Invalid input. Must be a valid URL (http:// or https://).")
+			continue
+		}
+
+		return input, nil
 	}
 }
 
@@ -290,29 +688,110 @@ func promptSelect(label string, options []string, defaultValue string) (string, 
 	}
 }
 
-func promptCheckbox(label, defaultValue string) (string, error) {
-	defaultBool := strings.EqualFold(defaultValue, "true") || strings.EqualFold(defaultValue, "yes") || defaultValue == "1"
-	prompt := label
-	if defaultBool {
-		prompt += " [Y/n]: "
-	} else {
-		prompt += " [y/N]: "
-	}
-	fmt.Print(prompt)
+func promptBoolean(label, defaultValue string) (string, error) {
 	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(strings.ToLower(input))
-	switch input {
-	case "y", "yes", "true":
-		return "true", nil
-	case "n", "no", "false":
-		return "false", nil
-	case "":
+	for {
+		defaultBool := strings.EqualFold(defaultValue, "true") || strings.EqualFold(defaultValue, "yes") || defaultValue == "1"
+		prompt := label
 		if defaultBool {
-			return "true", nil
+			prompt += " [Y/n]: "
+		} else {
+			prompt += " [y/N]: "
 		}
-		return "false", nil
-	default:
-		return "false", nil
+		fmt.Print(prompt)
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(strings.ToLower(input))
+
+		switch input {
+		case "y", "yes", "true":
+			return "true", nil
+		case "n", "no", "false":
+			return "false", nil
+		case "":
+			if defaultBool {
+				return "true", nil
+			}
+			return "false", nil
+		default:
+			fmt.Println("Invalid input. Must be true/false, yes/no, or y/n.")
+		}
 	}
+}
+
+func promptList(label, defaultValue string) (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		prompt := label + " (comma-separated)"
+		if defaultValue != "" {
+			prompt += fmt.Sprintf(" [%s]", defaultValue)
+		}
+		prompt += ": "
+		fmt.Print(prompt)
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "" {
+			return defaultValue, nil
+		}
+
+		// Validate it's a comma-separated list
+		matched, _ := regexp.MatchString(`^[^,]+(,[^,]+)*$`, input)
+		if !matched {
+			fmt.Println("Invalid input. Must be comma-separated values (e.g., value1,value2,value3).")
+			continue
+		}
+
+		return input, nil
+	}
+}
+
+// For new types, you can implement simple prompt stubs like below.
+// For brevity, only the main prompt types are implemented. You can expand as needed.
+
+func promptButton(label, defaultValue string) (string, error) {
+	fmt.Printf("%s [button, no input]: %s\n", label, defaultValue)
+	return defaultValue, nil
+}
+
+func promptColor(label, defaultValue string) (string, error) {
+	return promptText(label+" (color hex or name)", defaultValue, "")
+}
+
+func promptEmail(label, defaultValue string) (string, error) {
+	return promptText(label+" (email)", defaultValue, `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+}
+
+func promptImage(label, defaultValue string) (string, error) {
+	return promptFile(label+" (image path)", defaultValue)
+}
+
+func promptMonth(label, defaultValue string) (string, error) {
+	return promptText(label+" (YYYY-MM)", defaultValue, `^\d{4}-\d{2}$`)
+}
+
+func promptRadio(label string, options []string, defaultValue string) (string, error) {
+	return promptSelect(label+" (radio)", options, defaultValue)
+}
+
+func promptRange(label, defaultValue string) (string, error) {
+	return promptNumber(label+" (range)", defaultValue)
+}
+
+func promptReset(label, defaultValue string) (string, error) {
+	fmt.Printf("%s [reset, default=%s]\n", label, defaultValue)
+	return defaultValue, nil
+}
+
+func promptTel(label, defaultValue string) (string, error) {
+	return promptText(label+" (telephone)", defaultValue, `^\+?[0-9\- ]+$`)
+}
+
+func promptTime(label, defaultValue string) (string, error) {
+	return promptText(label+" (HH:MM)", defaultValue, `^\d{2}:\d{2}$`)
+}
+
+func promptWeek(label, defaultValue string) (string, error) {
+	return promptText(label+" (YYYY-Www)", defaultValue, `^\d{4}-W\d{2}$`)
 }
