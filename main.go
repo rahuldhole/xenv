@@ -183,20 +183,17 @@ func checkForDSL(formFile string) bool {
 }
 
 func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) ([]string, error) {
-	file, err := os.Open(formFile)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
 	existingOutVars := make(map[string]string)
+	existingFileLines := []string{}
 	if mergeMode {
 		if st, err := os.Stat(outputFile); err == nil && st.Size() > 0 {
 			if fOut, err := os.Open(outputFile); err == nil {
 				sc := bufio.NewScanner(fOut)
 				kvRe := regexp.MustCompile(`^([^=]+)=(.*)$`)
 				for sc.Scan() {
-					if m := kvRe.FindStringSubmatch(sc.Text()); len(m) > 2 {
+					line := sc.Text()
+					existingFileLines = append(existingFileLines, line)
+					if m := kvRe.FindStringSubmatch(line); len(m) > 2 {
 						existingOutVars[m[1]] = m[2]
 					}
 				}
@@ -204,6 +201,12 @@ func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) (
 			}
 		}
 	}
+
+	file, err := os.Open(formFile)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	keyValueRegex := regexp.MustCompile(`^([^=]+)=(.*)$`)
@@ -224,9 +227,21 @@ func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) (
 	file.Seek(0, 0)
 	scanner = bufio.NewScanner(file)
 
+	// Track comments preceding a key and map entries for later append of new keys
+	type tmplEntry struct {
+		Comments []string
+		Key      string
+		Line     string // key=value final line
+	}
+	templateEntries := make(map[string]*tmplEntry)
+	pendingComments := []string{}
+
 	for scanner.Scan() {
 		line := scanner.Text()
+
 		if strings.HasPrefix(line, "#") {
+			// Keep directive/comment lines
+			pendingComments = append(pendingComments, line)
 			fieldInfo := parseFieldDirective(line)
 			if fieldInfo != nil {
 				switch fieldInfo.Type {
@@ -238,6 +253,7 @@ func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) (
 					currentFieldInfo = fieldInfo
 				}
 			}
+			// For non-key comments we still store them in outputLines (when not mergeMode final assembly happens later)
 			outputLines = append(outputLines, line)
 			continue
 		}
@@ -245,24 +261,24 @@ func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) (
 		if matches := keyValueRegex.FindStringSubmatch(line); len(matches) > 0 {
 			key := matches[1]
 			templateDefault := matches[2]
-
 			currentOutputValue, hasExisting := existingOutVars[key]
 			existingValue := templateDefault
 			if mergeMode && hasExisting {
 				existingValue = currentOutputValue
 			}
-
 			conflictSuffix := ""
 			if mergeMode && hasExisting && currentOutputValue != templateDefault {
 				conflictSuffix = fmt.Sprintf(" (current: %s | template: %s)", currentOutputValue, templateDefault)
 			}
 
-			if skipMode {
-				outputLines = append(outputLines, key+"="+existingValue)
-			} else if hiddenNext {
-				outputLines = append(outputLines, key+"="+existingValue)
+			var finalVal string
+			switch {
+			case skipMode:
+				finalVal = existingValue
+			case hiddenNext:
+				finalVal = existingValue
 				hiddenNext = false
-			} else if currentFieldInfo != nil && currentFieldInfo.Type != NoField {
+			case currentFieldInfo != nil && currentFieldInfo.Type != NoField:
 				if currentFieldInfo.Readonly {
 					label := currentFieldInfo.Label
 					if label == "" {
@@ -273,11 +289,9 @@ func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) (
 					} else {
 						fmt.Printf("%s (readonly): %s\n", label, existingValue)
 					}
-					outputLines = append(outputLines, key+"="+existingValue)
+					finalVal = existingValue
 					currentFieldInfo = nil
-					continue
-				}
-				if currentFieldInfo.Script != "" {
+				} else if currentFieldInfo.Script != "" {
 					fmt.Printf("Script for %s%s\n", key, conflictSuffix)
 					fmt.Print("Run script? [y/N/v (view)]: ")
 					reader := bufio.NewReader(os.Stdin)
@@ -315,30 +329,28 @@ func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) (
 						if err != nil {
 							fmt.Printf("Error running script: %v\n", err)
 						}
-						val := strings.TrimSpace(string(out))
-						outputLines = append(outputLines, key+"="+val)
-						envVars[key] = val
-						currentFieldInfo = nil
-						continue
+						finalVal = strings.TrimSpace(string(out))
 					} else {
 						fmt.Println("Skipped script.")
+						finalVal = existingValue
 					}
+					currentFieldInfo = nil
+				} else {
+					label := currentFieldInfo.Label
+					if label == "" {
+						label = key
+					}
+					if conflictSuffix != "" {
+						label += conflictSuffix
+					}
+					val, err := promptForValue(currentFieldInfo, label, existingValue)
+					if err != nil {
+						return nil, err
+					}
+					finalVal = val
+					currentFieldInfo = nil
 				}
-				label := currentFieldInfo.Label
-				if label == "" {
-					label = key
-				}
-				if conflictSuffix != "" {
-					label += conflictSuffix
-				}
-				val, err := promptForValue(currentFieldInfo, label, existingValue)
-				if err != nil {
-					return nil, err
-				}
-				outputLines = append(outputLines, key+"="+val)
-				envVars[key] = val
-				currentFieldInfo = nil
-			} else if !hasDSL || key == "PLAIN_TEXT_VAR" {
+			case !hasDSL || key == "PLAIN_TEXT_VAR":
 				label := key
 				if conflictSuffix != "" {
 					label += conflictSuffix
@@ -347,21 +359,77 @@ func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) (
 				if err != nil {
 					return nil, err
 				}
-				outputLines = append(outputLines, key+"="+val)
-				envVars[key] = val
-			} else {
-				outputLines = append(outputLines, key+"="+existingValue)
-				envVars[key] = existingValue
+				finalVal = val
+			default:
+				finalVal = existingValue
 			}
+
+			finalLine := key + "=" + finalVal
+			outputLines = append(outputLines, finalLine)
+
+			// Capture template entry for later merge if key not present in existing file
+			if _, ok := templateEntries[key]; !ok {
+				templateEntries[key] = &tmplEntry{
+					Comments: append([]string{}, pendingComments...),
+					Key:      key,
+					Line:     finalLine,
+				}
+			} else {
+				// Update line if overridden
+				templateEntries[key].Line = finalLine
+			}
+			pendingComments = []string{}
 		} else {
+			// Non key non comment line
 			outputLines = append(outputLines, line)
+			pendingComments = []string{}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-	return outputLines, nil
+
+	// If not merge mode, return template-derived outputLines directly
+	if !mergeMode {
+		return outputLines, nil
+	}
+
+	// Merge mode: build final lines starting from existing file; override keys; then append new keys
+	mergedLines := []string{}
+	seenKeys := make(map[string]struct{})
+	kvRe := regexp.MustCompile(`^([^=]+)=(.*)$`)
+
+	for _, line := range existingFileLines {
+		if m := kvRe.FindStringSubmatch(line); len(m) > 2 {
+			k := m[1]
+			if entry, ok := templateEntries[k]; ok {
+				// Override existing variable with new value (do not duplicate comments)
+				mergedLines = append(mergedLines, entry.Line)
+				seenKeys[k] = struct{}{}
+				continue
+			}
+			// Keep original variable line
+			mergedLines = append(mergedLines, line)
+			seenKeys[k] = struct{}{}
+		} else {
+			// Preserve non key lines
+			mergedLines = append(mergedLines, line)
+		}
+	}
+
+	// Append template-only keys (add their directive comments if any)
+	for k, entry := range templateEntries {
+		if _, ok := seenKeys[k]; ok {
+			continue
+		}
+		for _, c := range entry.Comments {
+			mergedLines = append(mergedLines, c)
+		}
+		mergedLines = append(mergedLines, entry.Line)
+	}
+
+	return mergedLines, nil
 }
 
 func parseFieldDirective(line string) *FieldInfo {
