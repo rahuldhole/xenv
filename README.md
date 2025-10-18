@@ -18,7 +18,7 @@ go build -o xenv
 
 ## Usage
 
-Create a template file with `.xenv` extension:
+Create a template file with `.xenv`, `.template`, or `.example` extension, or use a plain `.env` file:
 
 ```
 # Database Configuration
@@ -39,6 +39,8 @@ Run xenv with your template file:
 
 ```bash
 xenv env.config.xenv
+# or you can re-execute existing .env file
+xenv .env
 ```
 
 This will generate `.config` with your configured values.

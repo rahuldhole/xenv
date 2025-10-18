@@ -4,7 +4,7 @@
 *.dll
 *.so
 *.dylib
-xenv
+envform
 xenv
 
 # Test binary, built with `go test -c`
@@ -20,5 +20,11 @@ vendor/
 go.work
 
 # Environment files (outputs of this tool)
-.env*
-!*.xenv
+.*env
+!.env.example
+.config
+.database
+.app
+.server
+.redis
+.plain

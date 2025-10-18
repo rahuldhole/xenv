@@ -35,22 +35,21 @@ func main() {
 
 	formFile := os.Args[1]
 
-	var outputFile string
-	if strings.HasSuffix(formFile, ".xenv") {
-		outputFile = filepath.Join(filepath.Dir(formFile), "."+strings.TrimSuffix(filepath.Base(formFile), ".xenv"))
-	} else {
-		outputFile = formFile
-	}
+	// Determine output filename - strip known extensions and add dot prefix
+	outputFile := determineOutputFile(formFile)
 
 	if _, err := os.Stat(formFile); os.IsNotExist(err) {
 		fmt.Printf("Error: Form file '%s' not found.\n", formFile)
 		os.Exit(1)
 	}
 
+	// Check if file has any DSL directives
+	hasDSL := checkForDSL(formFile)
+
 	fmt.Printf("Interactive configuration for %s\n", filepath.Base(formFile))
 	fmt.Println(strings.Repeat("-", 50))
 
-	outputLines, err := processFormFile(formFile, outputFile)
+	outputLines, err := processFormFile(formFile, outputFile, hasDSL)
 	if err != nil {
 		fmt.Printf("Error processing form file: %v\n", err)
 		os.Exit(1)
@@ -66,7 +65,48 @@ func main() {
 	fmt.Printf("Configuration saved to %s\n", outputFile)
 }
 
-func processFormFile(formFile, outputFile string) ([]string, error) {
+func determineOutputFile(formFile string) string {
+	dir := filepath.Dir(formFile)
+	base := filepath.Base(formFile)
+
+	// Strip known extensions
+	knownExtensions := []string{".xenv", ".template", ".example"}
+	for _, ext := range knownExtensions {
+		if strings.HasSuffix(base, ext) {
+			base = strings.TrimSuffix(base, ext)
+			break
+		}
+	}
+
+	// Add dot prefix if not already present
+	if !strings.HasPrefix(base, ".") {
+		base = "." + base
+	}
+
+	return filepath.Join(dir, base)
+}
+
+func checkForDSL(formFile string) bool {
+	file, err := os.Open(formFile)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "@input") ||
+			strings.Contains(line, "@password") ||
+			strings.Contains(line, "@select") ||
+			strings.Contains(line, "@checkbox") {
+			return true
+		}
+	}
+	return false
+}
+
+func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error) {
 	file, err := os.Open(formFile)
 	if err != nil {
 		return nil, err
@@ -106,6 +146,12 @@ func processFormFile(formFile, outputFile string) ([]string, error) {
 					return nil, err
 				}
 				currentFieldInfo = nil
+			} else if !hasDSL {
+				// Plain .env file without DSL - prompt as plain text input
+				newValue, err = promptInput(key, existingValue)
+				if err != nil {
+					return nil, err
+				}
 			} else {
 				newValue = existingValue
 			}
