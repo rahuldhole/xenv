@@ -57,9 +57,21 @@ type FieldInfo struct {
 }
 
 func main() {
-	// Adjusted usage line
+	// --- NEW: help detection before strict arg count ---
+	if len(os.Args) == 1 {
+		printHelp()
+		return
+	}
+	for _, a := range os.Args[1:] {
+		if a == "-h" || a == "--help" {
+			printHelp()
+			return
+		}
+	}
+
+	// Adjusted usage line (now references -h)
 	if len(os.Args) < 2 {
-		fmt.Printf("Usage: %s <form-file> [-o|--output <file>] [-d|--defaults] [-r|--run-scripts] [-m|--merge] [-f|--force]\n", os.Args[0])
+		fmt.Printf("Usage: %s <form-file> [-o|--output <file>] [-d|--defaults] [-r|--run-scripts] [-m|--merge] [-f|--force] [-h|--help]\n", os.Args[0])
 		os.Exit(1)
 	}
 
@@ -67,10 +79,10 @@ func main() {
 	outputFile := ""
 	defaultsMode := false
 	allScripts := false
-	preMerge := false      // NEW: merge via flag
-	forceOverwrite := false // NEW: overwrite via flag
+	preMerge := false
+	forceOverwrite := false
 
-	// --- UPDATED: parse extra flags (short & long forms) ---
+	// --- UPDATED: parse flags (help already handled) ---
 	for i := 2; i < len(os.Args); i++ {
 		arg := os.Args[i]
 		switch arg {
@@ -90,8 +102,13 @@ func main() {
 			preMerge = true
 		case "-f", "--force":
 			forceOverwrite = true
+		case "-h", "--help":
+			// (Already handled earlier, but keep for completeness)
+			printHelp()
+			return
 		default:
-			fmt.Printf("Unknown flag: %s\n", arg)
+			fmt.Printf("Unknown flag: %s\n\n", arg)
+			printHelp()
 			os.Exit(1)
 		}
 	}
@@ -1048,4 +1065,36 @@ func runScriptAuto(script string, outputLines []string, envVars map[string]strin
 
 func promptWeek(label, defaultValue string) (string, error) {
 	return promptText(label+" (YYYY-Www)", defaultValue, `^\d{4}-W\d{2}$`)
+}
+
+// --- NEW: help printer ---
+func printHelp() {
+	fmt.Println("xenv - interactive/automated environment file generator")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  xenv <form-file> [flags]")
+	fmt.Println()
+	fmt.Println("Flags:")
+	fmt.Println("  -o, --output <file>   Write to specific output file (default: dot-prefixed template name)")
+	fmt.Println("  -d, --defaults        Use existing / template defaults without interactive prompts")
+	fmt.Println("  -r, --run-scripts     Run all inline scripts automatically (no confirmations)")
+	fmt.Println("  -m, --merge           Merge with existing output (preserve unknown keys, show conflicts)")
+	fmt.Println("  -f, --force           Overwrite existing output file without prompting")
+	fmt.Println("  -h, --help            Show this help and exit")
+	fmt.Println()
+	fmt.Println("Rules:")
+	fmt.Println("  * --merge and --force are mutually exclusive.")
+	fmt.Println("  * If neither --merge nor --force is provided and the output file exists, you will be prompted.")
+	fmt.Println("  * Combine --defaults with --run-scripts for a fully automated generation including scripts.")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  xenv config.xenv # You can use any file extension (.xenv, .template, .example, etc.)")
+	fmt.Println("  xenv config.xenv -d -f")
+	fmt.Println("  xenv config.xenv -m -r")
+	fmt.Println("  xenv config.xenv -o .env.production -d -r")
+	fmt.Println()
+	fmt.Println("Inline Scripts:")
+	fmt.Println("  Add script=\"...\" or script=`...` to a directive (e.g. @text, @button).")
+	fmt.Println("  Use -r / --run-scripts to auto-run all scripts (including in --defaults mode).")
+	fmt.Println()
 }

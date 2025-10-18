@@ -11,13 +11,37 @@ xenv path/to/config.xenv
 ```
 
 Flags:
-- -o <file>            Specify output file
-- --defaults           Use existing/ template defaults without prompts
-- --run-scripts        Run all inline scripts automatically
-- Combine --defaults --run-scripts to generate fully scripted defaults
+```
+-o, --output <file>   Write to specific output file (default: dot-prefixed name of template)
+-d, --defaults        Use existing/ template defaults without interactive prompts
+-r, --run-scripts     Run all inline scripts automatically (no confirmations)
+-m, --merge           Merge with existing output (preserve undeclared keys, show conflicts)
+-f, --force           Overwrite existing output file without prompting
+-h, --help            Show detailed help and exit
+```
+Rules:
+- Do not combine --merge (-m) and --force (-f); they are mutually exclusive.
+- If neither -m nor -f is given and the output file exists, an interactive choice (overwrite / merge / cancel) is shown.
+- You can combine -d (defaults) with -r (run all scripts) to produce a fully auto-generated file.
+- With --defaults and no --run-scripts, script-capable fields keep existing/ template values.
 
-Merge / overwrite:
-If output exists you will be prompted: y (overwrite) / m (merge) / N (cancel).
+Examples:
+```bash
+# Interactive (asks)
+xenv config.xenv # You can use any file extension  (.xenv, .template, .example, etc.)
+
+# Force overwrite using defaults only
+xenv config.xenv -d -f
+
+# Merge into existing file, run scripts non-interactively
+xenv config.xenv -m -r
+
+# Generate to custom file with defaults & scripts
+xenv config.xenv -o .env.production -d -r
+
+# Show help
+xenv -h
+```
 
 Directive examples:
 ```env
@@ -43,7 +67,7 @@ Supported directives (short list):
 @tel @time @week @readonly @hidden @skip @button (script only)
 
 Scripts:
-Add script="..." or script=`...` to any directive (e.g. @text or @button) to run a shell snippet. Use --run-scripts to run them without confirmation.
+Add script="..." or script=`...` to any directive (e.g. @text or @button) to run a shell snippet. Use -r / --run-scripts to run all automatically (also honored in defaults mode).
 
 Output:
-Generates a dot-prefixed file derived from template name unless -o is specified.
+Generates a dot-prefixed file derived from template name unless -o/--output is specified.
