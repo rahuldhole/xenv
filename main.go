@@ -57,20 +57,45 @@ type FieldInfo struct {
 }
 
 func main() {
+	// Adjusted usage line
 	if len(os.Args) < 2 {
-		fmt.Printf("Usage: %s <form-file> [-o output-file]\n", os.Args[0])
+		fmt.Printf("Usage: %s <form-file> [-o|--output <file>] [-d|--defaults] [-r|--run-scripts] [-m|--merge] [-f|--force]\n", os.Args[0])
 		os.Exit(1)
 	}
 
 	formFile := os.Args[1]
 	outputFile := ""
-	// Parse -o param if present
+	defaultsMode := false
+	allScripts := false
+	preMerge := false      // NEW: merge via flag
+	forceOverwrite := false // NEW: overwrite via flag
+
+	// --- UPDATED: parse extra flags (short & long forms) ---
 	for i := 2; i < len(os.Args); i++ {
-		if os.Args[i] == "-o" && i+1 < len(os.Args) {
-			outputFile = os.Args[i+1]
-			break
+		arg := os.Args[i]
+		switch arg {
+		case "-o", "--output":
+			if i+1 < len(os.Args) {
+				outputFile = os.Args[i+1]
+				i++
+			} else {
+				fmt.Println("Error: -o/--output requires a value")
+				os.Exit(1)
+			}
+		case "-d", "--defaults":
+			defaultsMode = true
+		case "-r", "--run-scripts":
+			allScripts = true
+		case "-m", "--merge":
+			preMerge = true
+		case "-f", "--force":
+			forceOverwrite = true
+		default:
+			fmt.Printf("Unknown flag: %s\n", arg)
+			os.Exit(1)
 		}
 	}
+
 	if outputFile == "" {
 		outputFile = determineOutputFile(formFile)
 	}
@@ -80,32 +105,51 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Conflict check: both merge and force
+	if preMerge && forceOverwrite {
+		fmt.Println("Error: Cannot use both --merge (-m) and --force (-f) together.")
+		os.Exit(1)
+	}
+
 	mergeMode := false
+	// --- UPDATED: non-interactive overwrite/merge logic ---
 	if _, err := os.Stat(outputFile); err == nil {
-		fmt.Printf("Output file '%s' already exists. Overwrite, merge, or cancel? [y/N/m (merge)]: ", outputFile)
-		reader := bufio.NewReader(os.Stdin)
-		response, _ := reader.ReadString('\n')
-		response = strings.TrimSpace(strings.ToLower(response))
-		switch response {
-		case "y", "yes":
-			// overwrite: truncate now
+		if forceOverwrite {
 			f, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 			if err != nil {
 				fmt.Printf("Error: Cannot overwrite '%s': %v\n", outputFile, err)
 				os.Exit(1)
 			}
 			f.Close()
-			fmt.Println("Overwrite selected.")
-		case "m", "merge":
+			fmt.Println("Overwrite (force) selected.")
+		} else if preMerge {
 			mergeMode = true
-			fmt.Println("Merge selected. Existing values will be used as 'current' and conflicts shown.")
-			// Do NOT truncate here; we will read existing values and later rewrite file.
-		default:
-			fmt.Println("Operation cancelled.")
-			os.Exit(0)
+			fmt.Println("Merge (flag) selected. Existing values will be used as 'current' and conflicts shown.")
+		} else {
+			// Fallback to interactive choice
+			fmt.Printf("Output file '%s' already exists. Overwrite, merge, or cancel? [y/N/m (merge)]: ", outputFile)
+			reader := bufio.NewReader(os.Stdin)
+			response, _ := reader.ReadString('\n')
+			response = strings.TrimSpace(strings.ToLower(response))
+			switch response {
+			case "y", "yes":
+				f, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+				if err != nil {
+					fmt.Printf("Error: Cannot overwrite '%s': %v\n", outputFile, err)
+					os.Exit(1)
+				}
+				f.Close()
+				fmt.Println("Overwrite selected.")
+			case "m", "merge":
+				mergeMode = true
+				fmt.Println("Merge selected. Existing values will be used as 'current' and conflicts shown.")
+			default:
+				fmt.Println("Operation cancelled.")
+				os.Exit(0)
+			}
 		}
 	} else {
-		// New file: create placeholder (truncate semantic)
+		// New file
 		f, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		if err != nil {
 			fmt.Printf("Error: Cannot create output file '%s': %v\n", outputFile, err)
@@ -118,7 +162,7 @@ func main() {
 	fmt.Printf("Interactive configuration for %s\n", filepath.Base(formFile))
 	fmt.Println(strings.Repeat("-", 50))
 
-	outputLines, err := processFormFile(formFile, outputFile, hasDSL, mergeMode)
+	outputLines, err := processFormFile(formFile, outputFile, hasDSL, mergeMode, defaultsMode, allScripts)
 	if err != nil {
 		fmt.Printf("Error processing form file: %v\n", err)
 		os.Exit(1)
@@ -182,7 +226,8 @@ func checkForDSL(formFile string) bool {
 	return false
 }
 
-func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) ([]string, error) {
+// --- CHANGED SIGNATURE: added defaultsMode, allScripts ---
+func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool, defaultsMode bool, allScripts bool) ([]string, error) {
 	existingOutVars := make(map[string]string)
 	existingFileLines := []string{}
 	if mergeMode {
@@ -235,6 +280,7 @@ func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) (
 	}
 	templateEntries := make(map[string]*tmplEntry)
 	pendingComments := []string{}
+	resolvedVars := make(map[string]string) // NEW: live resolved values for scripts
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -272,102 +318,95 @@ func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) (
 			}
 
 			var finalVal string
-			switch {
-			case skipMode:
-				finalVal = existingValue
-			case hiddenNext:
-				finalVal = existingValue
-				hiddenNext = false
-			case currentFieldInfo != nil && currentFieldInfo.Type != NoField:
-				if currentFieldInfo.Readonly {
-					label := currentFieldInfo.Label
-					if label == "" {
-						label = key
-					}
-					if conflictSuffix != "" {
-						fmt.Printf("%s%s (readonly): %s\n", label, conflictSuffix, existingValue)
-					} else {
-						fmt.Printf("%s (readonly): %s\n", label, existingValue)
-					}
-					finalVal = existingValue
-					currentFieldInfo = nil
-				} else if currentFieldInfo.Script != "" {
-					fmt.Printf("Script for %s%s\n", key, conflictSuffix)
-					fmt.Print("Run script? [y/N/v (view)]: ")
-					reader := bufio.NewReader(os.Stdin)
-					resp, _ := reader.ReadString('\n')
-					resp = strings.TrimSpace(strings.ToLower(resp))
-					if resp == "view" || resp == "v" {
-						fmt.Println("Script content:")
-						fmt.Println(currentFieldInfo.Script)
-						fmt.Print("Run this script now? [y/N]: ")
-						resp, _ = reader.ReadString('\n')
-						resp = strings.TrimSpace(strings.ToLower(resp))
-					}
-					if resp == "y" || resp == "yes" {
-						env := os.Environ()
-						for _, l := range outputLines {
-							if kv := regexp.MustCompile(`^([^=]+)=(.*)$`).FindStringSubmatch(l); len(kv) > 2 {
-								env = append(env, fmt.Sprintf("%s=%s", kv[1], kv[2]))
-							}
-						}
-						for k2, v2 := range envVars {
-							found := false
-							for _, e := range env {
-								if strings.HasPrefix(e, k2+"=") {
-									found = true
-									break
-								}
-							}
-							if !found {
-								env = append(env, fmt.Sprintf("%s=%s", k2, v2))
-							}
-						}
-						cmd := exec.Command("sh", "-c", currentFieldInfo.Script)
-						cmd.Env = env
-						out, err := cmd.Output()
-						if err != nil {
-							fmt.Printf("Error running script: %v\n", err)
-						}
-						finalVal = strings.TrimSpace(string(out))
-					} else {
-						fmt.Println("Skipped script.")
-						finalVal = existingValue
-					}
-					currentFieldInfo = nil
+
+			// --- NEW: defaults mode fast-path ---
+			if defaultsMode {
+				if currentFieldInfo != nil && currentFieldInfo.Script != "" && allScripts {
+					// Run script automatically
+					finalVal = runScriptAuto(currentFieldInfo.Script, outputLines, envVars, resolvedVars, key)
 				} else {
-					label := currentFieldInfo.Label
-					if label == "" {
-						label = key
+					finalVal = existingValue
+				}
+				currentFieldInfo = nil
+			} else {
+				// Original interactive logic (slightly adapted for allScripts)
+				switch {
+				case skipMode:
+					finalVal = existingValue
+				case hiddenNext:
+					finalVal = existingValue
+					hiddenNext = false
+				case currentFieldInfo != nil && currentFieldInfo.Type != NoField:
+					if currentFieldInfo.Readonly {
+						label := currentFieldInfo.Label
+						if label == "" {
+							label = key
+						}
+						if conflictSuffix != "" {
+							fmt.Printf("%s%s (readonly): %s\n", label, conflictSuffix, existingValue)
+						} else {
+							fmt.Printf("%s (readonly): %s\n", label, existingValue)
+						}
+						finalVal = existingValue
+						currentFieldInfo = nil
+					} else if currentFieldInfo.Script != "" {
+						if allScripts {
+							finalVal = runScriptAuto(currentFieldInfo.Script, outputLines, envVars, resolvedVars, key)
+						} else {
+							fmt.Printf("Script for %s%s\n", key, conflictSuffix)
+							fmt.Print("Run script? [y/N/v (view)]: ")
+							reader := bufio.NewReader(os.Stdin)
+							resp, _ := reader.ReadString('\n')
+							resp = strings.TrimSpace(strings.ToLower(resp))
+							if resp == "view" || resp == "v" {
+								fmt.Println("Script content:")
+								fmt.Println(currentFieldInfo.Script)
+								fmt.Print("Run this script now? [y/N]: ")
+								resp, _ = reader.ReadString('\n')
+								resp = strings.TrimSpace(strings.ToLower(resp))
+							}
+							if resp == "y" || resp == "yes" {
+								finalVal = runScriptAuto(currentFieldInfo.Script, outputLines, envVars, resolvedVars, key)
+							} else {
+								fmt.Println("Skipped script.")
+								finalVal = existingValue
+							}
+						}
+						currentFieldInfo = nil
+					} else {
+						label := currentFieldInfo.Label
+						if label == "" {
+							label = key
+						}
+						if conflictSuffix != "" {
+							label += conflictSuffix
+						}
+						val, err := promptForValue(currentFieldInfo, label, existingValue)
+						if err != nil {
+							return nil, err
+						}
+						finalVal = val
+						currentFieldInfo = nil
 					}
+				case !hasDSL || key == "PLAIN_TEXT_VAR":
+					label := key
 					if conflictSuffix != "" {
 						label += conflictSuffix
 					}
-					val, err := promptForValue(currentFieldInfo, label, existingValue)
+					val, err := promptInput(label, existingValue)
 					if err != nil {
 						return nil, err
 					}
 					finalVal = val
-					currentFieldInfo = nil
+				default:
+					finalVal = existingValue
 				}
-			case !hasDSL || key == "PLAIN_TEXT_VAR":
-				label := key
-				if conflictSuffix != "" {
-					label += conflictSuffix
-				}
-				val, err := promptInput(label, existingValue)
-				if err != nil {
-					return nil, err
-				}
-				finalVal = val
-			default:
-				finalVal = existingValue
 			}
 
 			finalLine := key + "=" + finalVal
 			outputLines = append(outputLines, finalLine)
+			resolvedVars[key] = finalVal
 
-			// Capture template entry for later merge if key not present in existing file
 			if _, ok := templateEntries[key]; !ok {
 				templateEntries[key] = &tmplEntry{
 					Comments: append([]string{}, pendingComments...),
@@ -375,7 +414,6 @@ func processFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool) (
 					Line:     finalLine,
 				}
 			} else {
-				// Update line if overridden
 				templateEntries[key].Line = finalLine
 			}
 			pendingComments = []string{}
@@ -982,6 +1020,30 @@ func promptTel(label, defaultValue string) (string, error) {
 
 func promptTime(label, defaultValue string) (string, error) {
 	return promptText(label+" (HH:MM)", defaultValue, `^\d{2}:\d{2}$`)
+}
+
+// --- NEW helper: automatic script execution without prompt ---
+func runScriptAuto(script string, outputLines []string, envVars map[string]string, resolved map[string]string, key string) string {
+	env := os.Environ()
+	kvRe := regexp.MustCompile(`^([^=]+)=(.*)$`)
+	for _, l := range outputLines {
+		if m := kvRe.FindStringSubmatch(l); len(m) > 2 {
+			env = append(env, fmt.Sprintf("%s=%s", m[1], m[2]))
+		}
+	}
+	for k, v := range envVars {
+		if _, ok := resolved[k]; !ok {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Env = env
+	out, err := cmd.Output()
+	if err != nil {
+		fmt.Printf("Error running script for %s: %v\n", key, err)
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func promptWeek(label, defaultValue string) (string, error) {
