@@ -4,3 +4,6 @@ set -e
 
 echo "Realizing snapshot release with goreleaser..."
 goreleaser release --snapshot --clean
+
+
+exit 0

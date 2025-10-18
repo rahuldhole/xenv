@@ -13,3 +13,5 @@ go tool cover -html=tests/coverage.out -o tests/coverage.html
 
 echo ""
 echo "Coverage report generated at tests/coverage.html"
+
+exit 0
