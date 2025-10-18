@@ -1,0 +1,6 @@
+#!/bin/sh
+
+set -e
+
+echo "Running xenv example/all.env.example with defaults and script execution..."
+go run main.go examples/all.env.example --defaults --run-scripts

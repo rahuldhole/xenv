@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # xenv Test Runner
 # Runs all Go tests with coverage
