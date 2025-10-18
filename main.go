@@ -53,7 +53,7 @@ type FieldInfo struct {
 	Required bool
 	Readonly bool
 	Default  string
-	Action   string // shell script to run
+	Script   string // shell script to run
 }
 
 func main() {
@@ -233,15 +233,15 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 					currentFieldInfo = nil
 					continue
 				}
-				if currentFieldInfo.Action != "" {
-					fmt.Printf("This action will run the following shell script:\n")
+				if currentFieldInfo.Script != "" {
+					fmt.Printf("This script will run the following shell script:\n")
 					fmt.Print("Do you want to run this script? [y/N/v (view)]: ")
 					reader := bufio.NewReader(os.Stdin)
 					resp, _ := reader.ReadString('\n')
 					resp = strings.TrimSpace(strings.ToLower(resp))
 					if resp == "view" || resp == "v" {
 						fmt.Println("Script content:")
-						fmt.Println(currentFieldInfo.Action)
+						fmt.Println(currentFieldInfo.Script)
 						fmt.Print("Run this script now? [y/N]: ")
 						resp, _ = reader.ReadString('\n')
 						resp = strings.TrimSpace(strings.ToLower(resp))
@@ -268,11 +268,11 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 								env = append(env, fmt.Sprintf("%s=%s", k, v))
 							}
 						}
-						cmd := exec.Command("sh", "-c", currentFieldInfo.Action)
+						cmd := exec.Command("sh", "-c", currentFieldInfo.Script)
 						cmd.Env = env
 						out, err := cmd.Output()
 						if err != nil {
-							fmt.Printf("Error running action: %v\n", err)
+							fmt.Printf("Error running script: %v\n", err)
 						}
 						val := strings.TrimSpace(string(out))
 						outputLines = append(outputLines, key+"="+val)
@@ -361,8 +361,8 @@ func parseFieldDirective(line string) *FieldInfo {
 		return ""
 	}
 
-	getAction := func(line string) string {
-		re := regexp.MustCompile(`action=(?:"([^"]*)"|` + "`" + `([^` + "`" + `]*)` + "`" + `)`)
+	getScript := func(line string) string {
+		re := regexp.MustCompile(`script=(?:"([^"]*)"|` + "`" + `([^` + "`" + `]*)` + "`" + `)`)
 		m := re.FindStringSubmatch(line)
 		if len(m) == 3 {
 			if m[1] != "" {
@@ -375,64 +375,64 @@ func parseFieldDirective(line string) *FieldInfo {
 
 	switch {
 	case strings.Contains(line, "@hidden"):
-		return &FieldInfo{Type: HiddenField, Note: getNote(line), Action: getAction(line)}
+		return &FieldInfo{Type: HiddenField, Note: getNote(line), Script: getScript(line)}
 	case strings.Contains(line, "@skip"):
-		return &FieldInfo{Type: SkipField, Note: getNote(line), Action: getAction(line)}
+		return &FieldInfo{Type: SkipField, Note: getNote(line), Script: getScript(line)}
 	case strings.Contains(line, "@readonly"):
-		return &FieldInfo{Type: ReadonlyField, Label: getLabel(line), Note: getNote(line), Readonly: true, Action: getAction(line)}
+		return &FieldInfo{Type: ReadonlyField, Label: getLabel(line), Note: getNote(line), Readonly: true, Script: getScript(line)}
 	case strings.Contains(line, "@button"):
-		return &FieldInfo{Type: ButtonField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
+		return &FieldInfo{Type: ButtonField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}
 	case strings.Contains(line, "@checkbox"):
-		return &FieldInfo{Type: CheckboxField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
+		return &FieldInfo{Type: CheckboxField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}
 	case strings.Contains(line, "@color"):
-		return &FieldInfo{Type: ColorField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
+		return &FieldInfo{Type: ColorField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}
 	case strings.Contains(line, "@date"):
-		return &FieldInfo{Type: DateField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
+		return &FieldInfo{Type: DateField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}
 	case strings.Contains(line, "@datetime"):
-		return &FieldInfo{Type: DateTimeField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
+		return &FieldInfo{Type: DateTimeField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}
 	case strings.Contains(line, "@email"):
-		return &FieldInfo{Type: EmailField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
+		return &FieldInfo{Type: EmailField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}
 	case strings.Contains(line, "@file"):
-		return &FieldInfo{Type: FileField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
+		return &FieldInfo{Type: FileField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}
 	case strings.Contains(line, "@image"):
-		return &FieldInfo{Type: ImageField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
+		return &FieldInfo{Type: ImageField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}
 	case strings.Contains(line, "@month"):
-		return &FieldInfo{Type: MonthField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
+		return &FieldInfo{Type: MonthField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}
 	case strings.Contains(line, "@number"):
-		return &FieldInfo{Type: NumberField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
+		return &FieldInfo{Type: NumberField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}
 	case strings.Contains(line, "@password"):
-		return &FieldInfo{Type: PasswordField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
+		return &FieldInfo{Type: PasswordField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}
 	case strings.Contains(line, "@radio"):
 		options := []string{}
 		if m := regexp.MustCompile(`options=([^\s]*)`).FindStringSubmatch(line); len(m) > 1 {
 			options = strings.Split(m[1], ",")
 		}
-		return &FieldInfo{Type: RadioField, Label: getLabel(line), Options: options, Note: getNote(line), Action: getAction(line)}
+		return &FieldInfo{Type: RadioField, Label: getLabel(line), Options: options, Note: getNote(line), Script: getScript(line)}
 	case strings.Contains(line, "@range"):
-		return &FieldInfo{Type: RangeField, Label: getLabel(line), Note: getNote(line), Default: getDefault(line), Action: getAction(line)}
+		return &FieldInfo{Type: RangeField, Label: getLabel(line), Note: getNote(line), Default: getDefault(line), Script: getScript(line)}
 	case strings.Contains(line, "@reset"):
-		return &FieldInfo{Type: ResetField, Label: getLabel(line), Note: getNote(line), Default: getDefault(line), Action: getAction(line)}
+		return &FieldInfo{Type: ResetField, Label: getLabel(line), Note: getNote(line), Default: getDefault(line), Script: getScript(line)}
 	case strings.Contains(line, "@tel"):
-		return &FieldInfo{Type: TelField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
+		return &FieldInfo{Type: TelField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}
 	case strings.Contains(line, "@text"):
-		return &FieldInfo{Type: TextField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
+		return &FieldInfo{Type: TextField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}
 	case strings.Contains(line, "@time"):
-		return &FieldInfo{Type: TimeField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
+		return &FieldInfo{Type: TimeField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}
 	case strings.Contains(line, "@url"):
-		return &FieldInfo{Type: URLField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
+		return &FieldInfo{Type: URLField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}
 	case strings.Contains(line, "@week"):
-		return &FieldInfo{Type: WeekField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
+		return &FieldInfo{Type: WeekField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}
 	case strings.Contains(line, "@select"):
 		label := getLabel(line)
 		options := []string{}
 		if m := regexp.MustCompile(`options=([^\s]*)`).FindStringSubmatch(line); len(m) > 1 {
 			options = strings.Split(m[1], ",")
 		}
-		return &FieldInfo{Type: SelectField, Label: label, Options: options, Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
+		return &FieldInfo{Type: SelectField, Label: label, Options: options, Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}
 	case strings.Contains(line, "@boolean"):
-		return &FieldInfo{Type: BooleanField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
+		return &FieldInfo{Type: BooleanField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}
 	case strings.Contains(line, "@list"):
-		return &FieldInfo{Type: ListField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
+		return &FieldInfo{Type: ListField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}
 	default:
 		return nil
 	}
