@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"golang.org/x/term"
+	"os/exec"
 )
 
 type FieldType int
@@ -52,6 +53,7 @@ type FieldInfo struct {
 	Required bool
 	Readonly bool
 	Default  string
+	Action   string // shell script to run
 }
 
 func main() {
@@ -183,6 +185,18 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 	skipMode := false
 	hiddenNext := false
 
+	envVars := make(map[string]string)
+	// Preload all key-value pairs for env injection
+	file.Seek(0, 0)
+	scannerEnv := bufio.NewScanner(file)
+	for scannerEnv.Scan() {
+		if matches := regexp.MustCompile(`^([^=]+)=(.*)$`).FindStringSubmatch(scannerEnv.Text()); len(matches) > 0 {
+			envVars[matches[1]] = matches[2]
+		}
+	}
+	file.Seek(0, 0)
+	scanner = bufio.NewScanner(file)
+
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -207,7 +221,6 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 			defaultValue := matches[2]
 			existingValue := getExistingValue(key, defaultValue, outputFile)
 
-			// --- PATCH: Always prompt for plain text input if no DSL and no field info ---
 			if skipMode {
 				outputLines = append(outputLines, key+"="+existingValue)
 			} else if hiddenNext {
@@ -220,6 +233,56 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 					currentFieldInfo = nil
 					continue
 				}
+				if currentFieldInfo.Action != "" {
+					fmt.Printf("This action will run the following shell script:\n")
+					fmt.Print("Do you want to run this script? [y/N/v (view)]: ")
+					reader := bufio.NewReader(os.Stdin)
+					resp, _ := reader.ReadString('\n')
+					resp = strings.TrimSpace(strings.ToLower(resp))
+					if resp == "view" || resp == "v" {
+						fmt.Println("Script content:")
+						fmt.Println(currentFieldInfo.Action)
+						fmt.Print("Run this script now? [y/N]: ")
+						resp, _ = reader.ReadString('\n')
+						resp = strings.TrimSpace(strings.ToLower(resp))
+					}
+					if resp == "y" || resp == "yes" {
+						// Prepare environment with all vars from previous answers (outputLines) and file
+						env := os.Environ()
+						// Add previous answers (outputLines) first, so they override file values
+						for _, l := range outputLines {
+							if kv := regexp.MustCompile(`^([^=]+)=(.*)$`).FindStringSubmatch(l); len(kv) > 0 {
+								env = append(env, fmt.Sprintf("%s=%s", kv[1], kv[2]))
+							}
+						}
+						// Add file values (envVars) if not already present
+						for k, v := range envVars {
+							found := false
+							for _, e := range env {
+								if strings.HasPrefix(e, k+"=") {
+									found = true
+									break
+								}
+							}
+							if !found {
+								env = append(env, fmt.Sprintf("%s=%s", k, v))
+							}
+						}
+						cmd := exec.Command("sh", "-c", currentFieldInfo.Action)
+						cmd.Env = env
+						out, err := cmd.Output()
+						if err != nil {
+							fmt.Printf("Error running action: %v\n", err)
+						}
+						val := strings.TrimSpace(string(out))
+						outputLines = append(outputLines, key+"="+val)
+						envVars[key] = val
+						currentFieldInfo = nil
+						continue
+					} else {
+						fmt.Println("Skipped running the script.")
+					}
+				}
 				label := currentFieldInfo.Label
 				if label == "" {
 					label = key
@@ -229,16 +292,18 @@ func processFormFile(formFile, outputFile string, hasDSL bool) ([]string, error)
 					return nil, err
 				}
 				outputLines = append(outputLines, key+"="+val)
+				envVars[key] = val
 				currentFieldInfo = nil
 			} else if !hasDSL || key == "PLAIN_TEXT_VAR" {
-				// Always prompt for PLAIN_TEXT_VAR as plain text input
 				val, err := promptInput(key, existingValue)
 				if err != nil {
 					return nil, err
 				}
 				outputLines = append(outputLines, key+"="+val)
+				envVars[key] = val
 			} else {
 				outputLines = append(outputLines, key+"="+existingValue)
+				envVars[key] = existingValue
 			}
 		} else {
 			outputLines = append(outputLines, line)
@@ -296,66 +361,78 @@ func parseFieldDirective(line string) *FieldInfo {
 		return ""
 	}
 
+	getAction := func(line string) string {
+		re := regexp.MustCompile(`action=(?:"([^"]*)"|` + "`" + `([^` + "`" + `]*)` + "`" + `)`)
+		m := re.FindStringSubmatch(line)
+		if len(m) == 3 {
+			if m[1] != "" {
+				return m[1]
+			}
+			return m[2]
+		}
+		return ""
+	}
+
 	switch {
 	case strings.Contains(line, "@hidden"):
-		return &FieldInfo{Type: HiddenField, Note: getNote(line)}
+		return &FieldInfo{Type: HiddenField, Note: getNote(line), Action: getAction(line)}
 	case strings.Contains(line, "@skip"):
-		return &FieldInfo{Type: SkipField, Note: getNote(line)}
+		return &FieldInfo{Type: SkipField, Note: getNote(line), Action: getAction(line)}
 	case strings.Contains(line, "@readonly"):
-		return &FieldInfo{Type: ReadonlyField, Label: getLabel(line), Note: getNote(line), Readonly: true}
+		return &FieldInfo{Type: ReadonlyField, Label: getLabel(line), Note: getNote(line), Readonly: true, Action: getAction(line)}
 	case strings.Contains(line, "@button"):
-		return &FieldInfo{Type: ButtonField, Label: getLabel(line), Note: getNote(line)}
+		return &FieldInfo{Type: ButtonField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
 	case strings.Contains(line, "@checkbox"):
-		return &FieldInfo{Type: CheckboxField, Label: getLabel(line), Note: getNote(line)}
+		return &FieldInfo{Type: CheckboxField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
 	case strings.Contains(line, "@color"):
-		return &FieldInfo{Type: ColorField, Label: getLabel(line), Note: getNote(line)}
+		return &FieldInfo{Type: ColorField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
 	case strings.Contains(line, "@date"):
-		return &FieldInfo{Type: DateField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line)}
+		return &FieldInfo{Type: DateField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
 	case strings.Contains(line, "@datetime"):
-		return &FieldInfo{Type: DateTimeField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line)}
+		return &FieldInfo{Type: DateTimeField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
 	case strings.Contains(line, "@email"):
-		return &FieldInfo{Type: EmailField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line)}
+		return &FieldInfo{Type: EmailField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
 	case strings.Contains(line, "@file"):
-		return &FieldInfo{Type: FileField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
+		return &FieldInfo{Type: FileField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
 	case strings.Contains(line, "@image"):
-		return &FieldInfo{Type: ImageField, Label: getLabel(line), Note: getNote(line)}
+		return &FieldInfo{Type: ImageField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
 	case strings.Contains(line, "@month"):
-		return &FieldInfo{Type: MonthField, Label: getLabel(line), Note: getNote(line)}
+		return &FieldInfo{Type: MonthField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
 	case strings.Contains(line, "@number"):
-		return &FieldInfo{Type: NumberField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
+		return &FieldInfo{Type: NumberField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
 	case strings.Contains(line, "@password"):
-		return &FieldInfo{Type: PasswordField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
+		return &FieldInfo{Type: PasswordField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
 	case strings.Contains(line, "@radio"):
 		options := []string{}
 		if m := regexp.MustCompile(`options=([^\s]*)`).FindStringSubmatch(line); len(m) > 1 {
 			options = strings.Split(m[1], ",")
 		}
-		return &FieldInfo{Type: RadioField, Label: getLabel(line), Options: options, Note: getNote(line)}
+		return &FieldInfo{Type: RadioField, Label: getLabel(line), Options: options, Note: getNote(line), Action: getAction(line)}
 	case strings.Contains(line, "@range"):
-		return &FieldInfo{Type: RangeField, Label: getLabel(line), Note: getNote(line), Default: getDefault(line)}
+		return &FieldInfo{Type: RangeField, Label: getLabel(line), Note: getNote(line), Default: getDefault(line), Action: getAction(line)}
 	case strings.Contains(line, "@reset"):
-		return &FieldInfo{Type: ResetField, Label: getLabel(line), Note: getNote(line), Default: getDefault(line)}
+		return &FieldInfo{Type: ResetField, Label: getLabel(line), Note: getNote(line), Default: getDefault(line), Action: getAction(line)}
 	case strings.Contains(line, "@tel"):
-		return &FieldInfo{Type: TelField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line)}
+		return &FieldInfo{Type: TelField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
 	case strings.Contains(line, "@text"):
-		return &FieldInfo{Type: TextField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line)}
+		return &FieldInfo{Type: TextField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
 	case strings.Contains(line, "@time"):
-		return &FieldInfo{Type: TimeField, Label: getLabel(line), Note: getNote(line)}
+		return &FieldInfo{Type: TimeField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
 	case strings.Contains(line, "@url"):
-		return &FieldInfo{Type: URLField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
+		return &FieldInfo{Type: URLField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
 	case strings.Contains(line, "@week"):
-		return &FieldInfo{Type: WeekField, Label: getLabel(line), Note: getNote(line)}
+		return &FieldInfo{Type: WeekField, Label: getLabel(line), Note: getNote(line), Action: getAction(line)}
 	case strings.Contains(line, "@select"):
 		label := getLabel(line)
 		options := []string{}
 		if m := regexp.MustCompile(`options=([^\s]*)`).FindStringSubmatch(line); len(m) > 1 {
 			options = strings.Split(m[1], ",")
 		}
-		return &FieldInfo{Type: SelectField, Label: label, Options: options, Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
+		return &FieldInfo{Type: SelectField, Label: label, Options: options, Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
 	case strings.Contains(line, "@boolean"):
-		return &FieldInfo{Type: BooleanField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
+		return &FieldInfo{Type: BooleanField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
 	case strings.Contains(line, "@list"):
-		return &FieldInfo{Type: ListField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line)}
+		return &FieldInfo{Type: ListField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Action: getAction(line)}
 	default:
 		return nil
 	}

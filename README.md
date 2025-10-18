@@ -125,3 +125,10 @@ You can set `GOOS` and `GOARCH` to any valid Go target. See the [Go documentatio
 ## License
 
 MIT
+
+## Special: Inline Shell Actions
+
+You can use `action="..."` on any field (commonly with `@button`) to run a shell script.  
+The script will be shown before execution and you can choose to run or skip it.
+
+Example:
