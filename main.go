@@ -10,14 +10,33 @@ import (
 	"github.com/rahuldhole/xenv/app/processor"
 )
 
+// Version is set during build via ldflags
+var Version = "dev"
+
 func main() {
 	if len(os.Args) == 1 {
 		printHelp()
 		return
 	}
+
+	for _, a := range os.Args[1:] {
+		switch a {
+		case "-h", "--help":
+			printHelp()
+			return
+		case "-v", "--version":
+			fmt.Println(Version)
+			return
+		}
+	}
+
 	for _, a := range os.Args[1:] {
 		if a == "-h" || a == "--help" {
 			printHelp()
+			return
+		}
+		if a == "-v" || a == "--version" {
+			fmt.Println(Version)
 			return
 		}
 	}
@@ -124,7 +143,7 @@ func main() {
 }
 
 func printHelp() {
-	fmt.Println("xenv - interactive/automated environment file generator")
+	fmt.Printf("xenv %s - interactive/automated environment file generator\n", Version)
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  xenv <form-file> [flags]")
@@ -135,6 +154,7 @@ func printHelp() {
 	fmt.Println("  -r, --run-scripts     Run all inline scripts automatically (no confirmations)")
 	fmt.Println("  -m, --merge           Merge with existing output (preserve unknown keys, show conflicts)")
 	fmt.Println("  -f, --force           Overwrite existing output file without prompting")
+	fmt.Println("  -v, --version         Show version and exit")
 	fmt.Println("  -h, --help            Show this help and exit")
 	fmt.Println()
 	fmt.Println("Rules:")
