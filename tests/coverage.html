@@ -1,0 +1,1137 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>field: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/rahuldhole/xenv/app/field/parser.go (55.9%)</option>
+				
+				<option value="file1">github.com/rahuldhole/xenv/app/processor/processor.go (10.8%)</option>
+				
+				<option value="file2">github.com/rahuldhole/xenv/app/prompt/prompt.go (0.0%)</option>
+				
+				<option value="file3">github.com/rahuldhole/xenv/app/script/runner.go (86.7%)</option>
+				
+				<option value="file4">github.com/rahuldhole/xenv/main.go (33.3%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package field
+
+import (
+        "regexp"
+        "strings"
+)
+
+func ParseDirective(line string) *Info <span class="cov8" title="1">{
+        getLabel := func(line string) string </span><span class="cov8" title="1">{
+                labelRegex := regexp.MustCompile(`label="([^"]*)"`)
+                if m := labelRegex.FindStringSubmatch(line); len(m) &gt; 1 </span><span class="cov8" title="1">{
+                        return m[1]
+                }</span>
+                <span class="cov8" title="1">return ""</span>
+        }
+
+        <span class="cov8" title="1">getNote := func(line string) string </span><span class="cov8" title="1">{
+                noteRegex := regexp.MustCompile(`note="([^"]*)"`)
+                if m := noteRegex.FindStringSubmatch(line); len(m) &gt; 1 </span><span class="cov8" title="1">{
+                        return m[1]
+                }</span>
+                <span class="cov8" title="1">return ""</span>
+        }
+
+        <span class="cov8" title="1">getPattern := func(line string) string </span><span class="cov8" title="1">{
+                patternRegex := regexp.MustCompile(`pattern="([^"]*)"`)
+                if m := patternRegex.FindStringSubmatch(line); len(m) &gt; 1 </span><span class="cov0" title="0">{
+                        return m[1]
+                }</span>
+                <span class="cov8" title="1">return ""</span>
+        }
+
+        <span class="cov8" title="1">getRequired := func(line string) bool </span><span class="cov8" title="1">{
+                requiredRegex := regexp.MustCompile(`(?i)\brequired\b(?:\s*=\s*"?true"?)?`)
+                return requiredRegex.MatchString(line)
+        }</span>
+
+        <span class="cov8" title="1">getReadonly := func(line string) bool </span><span class="cov8" title="1">{
+                readonlyRegex := regexp.MustCompile(`(?i)\breadonly\b(?:\s*=\s*"?true"?)?`)
+                return readonlyRegex.MatchString(line)
+        }</span>
+
+        <span class="cov8" title="1">getDefault := func(line string) string </span><span class="cov0" title="0">{
+                defaultRegex := regexp.MustCompile(`default="([^"]*)"`)
+                if m := defaultRegex.FindStringSubmatch(line); len(m) &gt; 1 </span><span class="cov0" title="0">{
+                        return m[1]
+                }</span>
+                <span class="cov0" title="0">return ""</span>
+        }
+
+        <span class="cov8" title="1">getScript := func(line string) string </span><span class="cov8" title="1">{
+                re := regexp.MustCompile(`script=(?:"([^"]*)"|` + "`" + `([^` + "`" + `]*)` + "`" + `)`)
+                m := re.FindStringSubmatch(line)
+                if len(m) == 3 </span><span class="cov8" title="1">{
+                        if m[1] != "" </span><span class="cov8" title="1">{
+                                return m[1]
+                        }</span>
+                        <span class="cov0" title="0">return m[2]</span>
+                }
+                <span class="cov8" title="1">return ""</span>
+        }
+
+        <span class="cov8" title="1">switch </span>{
+        case strings.Contains(line, "@hidden"):<span class="cov8" title="1">
+                return &amp;Info{Type: HiddenField, Note: getNote(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@skip"):<span class="cov0" title="0">
+                return &amp;Info{Type: SkipField, Note: getNote(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@readonly"):<span class="cov0" title="0">
+                return &amp;Info{Type: ReadonlyField, Label: getLabel(line), Note: getNote(line), Readonly: true, Script: getScript(line)}</span>
+        case strings.Contains(line, "@button"):<span class="cov0" title="0">
+                return &amp;Info{Type: ButtonField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@checkbox"):<span class="cov0" title="0">
+                return &amp;Info{Type: CheckboxField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@color"):<span class="cov0" title="0">
+                return &amp;Info{Type: ColorField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@date"):<span class="cov0" title="0">
+                return &amp;Info{Type: DateField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@datetime"):<span class="cov0" title="0">
+                return &amp;Info{Type: DateTimeField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@email"):<span class="cov0" title="0">
+                return &amp;Info{Type: EmailField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@file"):<span class="cov0" title="0">
+                return &amp;Info{Type: FileField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@image"):<span class="cov0" title="0">
+                return &amp;Info{Type: ImageField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@month"):<span class="cov0" title="0">
+                return &amp;Info{Type: MonthField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@number"):<span class="cov8" title="1">
+                return &amp;Info{Type: NumberField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@password"):<span class="cov0" title="0">
+                return &amp;Info{Type: PasswordField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@radio"):<span class="cov0" title="0">
+                options := []string{}
+                if m := regexp.MustCompile(`options=([^\s]*)`).FindStringSubmatch(line); len(m) &gt; 1 </span><span class="cov0" title="0">{
+                        options = strings.Split(m[1], ",")
+                }</span>
+                <span class="cov0" title="0">return &amp;Info{Type: RadioField, Label: getLabel(line), Options: options, Note: getNote(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@range"):<span class="cov0" title="0">
+                return &amp;Info{Type: RangeField, Label: getLabel(line), Note: getNote(line), Default: getDefault(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@reset"):<span class="cov0" title="0">
+                return &amp;Info{Type: ResetField, Label: getLabel(line), Note: getNote(line), Default: getDefault(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@tel"):<span class="cov0" title="0">
+                return &amp;Info{Type: TelField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@text"):<span class="cov8" title="1">
+                return &amp;Info{Type: TextField, Label: getLabel(line), Note: getNote(line), Pattern: getPattern(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@time"):<span class="cov0" title="0">
+                return &amp;Info{Type: TimeField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@url"):<span class="cov0" title="0">
+                return &amp;Info{Type: URLField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@week"):<span class="cov0" title="0">
+                return &amp;Info{Type: WeekField, Label: getLabel(line), Note: getNote(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@select"):<span class="cov8" title="1">
+                label := getLabel(line)
+                options := []string{}
+                if m := regexp.MustCompile(`options=([^\s]*)`).FindStringSubmatch(line); len(m) &gt; 1 </span><span class="cov8" title="1">{
+                        options = strings.Split(m[1], ",")
+                }</span>
+                <span class="cov8" title="1">return &amp;Info{Type: SelectField, Label: label, Options: options, Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@boolean"):<span class="cov0" title="0">
+                return &amp;Info{Type: BooleanField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}</span>
+        case strings.Contains(line, "@list"):<span class="cov0" title="0">
+                return &amp;Info{Type: ListField, Label: getLabel(line), Note: getNote(line), Required: getRequired(line), Readonly: getReadonly(line), Script: getScript(line)}</span>
+        default:<span class="cov8" title="1">
+                return nil</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package processor
+
+import (
+        "bufio"
+        "fmt"
+        "os"
+        "path/filepath"
+        "regexp"
+        "strings"
+
+        "github.com/rahuldhole/xenv/app/field"
+        "github.com/rahuldhole/xenv/app/prompt"
+        "github.com/rahuldhole/xenv/app/script"
+)
+
+func DetermineOutputFile(formFile string) string <span class="cov8" title="1">{
+        dir := filepath.Dir(formFile)
+        base := filepath.Base(formFile)
+
+        knownExtensions := []string{".xenv", ".template", ".example"}
+        for _, ext := range knownExtensions </span><span class="cov8" title="1">{
+                if strings.HasSuffix(base, ext) </span><span class="cov8" title="1">{
+                        base = strings.TrimSuffix(base, ext)
+                        break</span>
+                }
+        }
+
+        <span class="cov8" title="1">if !strings.HasPrefix(base, ".") </span><span class="cov8" title="1">{
+                base = "." + base
+        }</span>
+
+        <span class="cov8" title="1">return filepath.Join(dir, base)</span>
+}
+
+func CheckForDSL(formFile string) bool <span class="cov8" title="1">{
+        file, err := os.Open(formFile)
+        if err != nil </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov8" title="1">defer file.Close()
+
+        scanner := bufio.NewScanner(file)
+        for scanner.Scan() </span><span class="cov8" title="1">{
+                line := scanner.Text()
+                if strings.Contains(line, "@text") ||
+                        strings.Contains(line, "@number") ||
+                        strings.Contains(line, "@float") ||
+                        strings.Contains(line, "@date") ||
+                        strings.Contains(line, "@file") ||
+                        strings.Contains(line, "@url") ||
+                        strings.Contains(line, "@password") ||
+                        strings.Contains(line, "@select") ||
+                        strings.Contains(line, "@boolean") ||
+                        strings.Contains(line, "@list") ||
+                        strings.Contains(line, "@hidden") </span><span class="cov8" title="1">{
+                        return true
+                }</span>
+        }
+        <span class="cov0" title="0">return false</span>
+}
+
+func ProcessFormFile(formFile, outputFile string, hasDSL bool, mergeMode bool, defaultsMode bool, allScripts bool) ([]string, error) <span class="cov0" title="0">{
+        existingOutVars := make(map[string]string)
+        existingFileLines := []string{}
+        if mergeMode </span><span class="cov0" title="0">{
+                if st, err := os.Stat(outputFile); err == nil &amp;&amp; st.Size() &gt; 0 </span><span class="cov0" title="0">{
+                        if fOut, err := os.Open(outputFile); err == nil </span><span class="cov0" title="0">{
+                                sc := bufio.NewScanner(fOut)
+                                kvRe := regexp.MustCompile(`^([^=]+)=(.*)$`)
+                                for sc.Scan() </span><span class="cov0" title="0">{
+                                        line := sc.Text()
+                                        existingFileLines = append(existingFileLines, line)
+                                        if m := kvRe.FindStringSubmatch(line); len(m) &gt; 2 </span><span class="cov0" title="0">{
+                                                existingOutVars[m[1]] = m[2]
+                                        }</span>
+                                }
+                                <span class="cov0" title="0">fOut.Close()</span>
+                        }
+                }
+        }
+
+        <span class="cov0" title="0">file, err := os.Open(formFile)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">defer file.Close()
+
+        scanner := bufio.NewScanner(file)
+        keyValueRegex := regexp.MustCompile(`^([^=]+)=(.*)$`)
+        var outputLines []string
+        var currentFieldInfo *field.Info
+        skipMode := false
+        hiddenNext := false
+        envVars := make(map[string]string)
+
+        file.Seek(0, 0)
+        scannerEnv := bufio.NewScanner(file)
+        for scannerEnv.Scan() </span><span class="cov0" title="0">{
+                if matches := regexp.MustCompile(`^([^=]+)=(.*)$`).FindStringSubmatch(scannerEnv.Text()); len(matches) &gt; 0 </span><span class="cov0" title="0">{
+                        envVars[matches[1]] = matches[2]
+                }</span>
+        }
+        <span class="cov0" title="0">file.Seek(0, 0)
+        scanner = bufio.NewScanner(file)
+
+        type tmplEntry struct {
+                Comments []string
+                Key      string
+                Line     string
+        }
+        templateEntries := make(map[string]*tmplEntry)
+        pendingComments := []string{}
+        resolvedVars := make(map[string]string)
+
+        for scanner.Scan() </span><span class="cov0" title="0">{
+                line := scanner.Text()
+
+                if strings.HasPrefix(line, "#") </span><span class="cov0" title="0">{
+                        pendingComments = append(pendingComments, line)
+                        fieldInfo := field.ParseDirective(line)
+                        if fieldInfo != nil </span><span class="cov0" title="0">{
+                                switch fieldInfo.Type </span>{
+                                case field.SkipField:<span class="cov0" title="0">
+                                        skipMode = true</span>
+                                case field.HiddenField:<span class="cov0" title="0">
+                                        hiddenNext = true</span>
+                                default:<span class="cov0" title="0">
+                                        currentFieldInfo = fieldInfo</span>
+                                }
+                        }
+                        <span class="cov0" title="0">outputLines = append(outputLines, line)
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">if matches := keyValueRegex.FindStringSubmatch(line); len(matches) &gt; 0 </span><span class="cov0" title="0">{
+                        key := matches[1]
+                        templateDefault := matches[2]
+                        currentOutputValue, hasExisting := existingOutVars[key]
+                        existingValue := templateDefault
+                        if mergeMode &amp;&amp; hasExisting </span><span class="cov0" title="0">{
+                                existingValue = currentOutputValue
+                        }</span>
+                        <span class="cov0" title="0">conflictSuffix := ""
+                        if mergeMode &amp;&amp; hasExisting &amp;&amp; currentOutputValue != templateDefault </span><span class="cov0" title="0">{
+                                conflictSuffix = fmt.Sprintf(" (current: %s | template: %s)", currentOutputValue, templateDefault)
+                        }</span>
+
+                        <span class="cov0" title="0">var finalVal string
+
+                        if defaultsMode </span><span class="cov0" title="0">{
+                                if currentFieldInfo != nil &amp;&amp; currentFieldInfo.Script != "" &amp;&amp; allScripts </span><span class="cov0" title="0">{
+                                        finalVal = script.RunAuto(currentFieldInfo.Script, outputLines, envVars, resolvedVars, key)
+                                }</span> else<span class="cov0" title="0"> {
+                                        finalVal = existingValue
+                                }</span>
+                                <span class="cov0" title="0">currentFieldInfo = nil</span>
+                        } else<span class="cov0" title="0"> {
+                                switch </span>{
+                                case skipMode:<span class="cov0" title="0">
+                                        finalVal = existingValue</span>
+                                case hiddenNext:<span class="cov0" title="0">
+                                        finalVal = existingValue
+                                        hiddenNext = false</span>
+                                case currentFieldInfo != nil &amp;&amp; currentFieldInfo.Type != field.NoField:<span class="cov0" title="0">
+                                        if currentFieldInfo.Readonly </span><span class="cov0" title="0">{
+                                                label := currentFieldInfo.Label
+                                                if label == "" </span><span class="cov0" title="0">{
+                                                        label = key
+                                                }</span>
+                                                <span class="cov0" title="0">if conflictSuffix != "" </span><span class="cov0" title="0">{
+                                                        fmt.Printf("%s%s (readonly): %s\n", label, conflictSuffix, existingValue)
+                                                }</span> else<span class="cov0" title="0"> {
+                                                        fmt.Printf("%s (readonly): %s\n", label, existingValue)
+                                                }</span>
+                                                <span class="cov0" title="0">finalVal = existingValue
+                                                currentFieldInfo = nil</span>
+                                        } else<span class="cov0" title="0"> if currentFieldInfo.Script != "" </span><span class="cov0" title="0">{
+                                                if allScripts </span><span class="cov0" title="0">{
+                                                        finalVal = script.RunAuto(currentFieldInfo.Script, outputLines, envVars, resolvedVars, key)
+                                                }</span> else<span class="cov0" title="0"> {
+                                                        fmt.Printf("Script for %s%s\n", key, conflictSuffix)
+                                                        fmt.Print("Run script? [y/N/v (view)]: ")
+                                                        reader := bufio.NewReader(os.Stdin)
+                                                        resp, _ := reader.ReadString('\n')
+                                                        resp = strings.TrimSpace(strings.ToLower(resp))
+                                                        if resp == "view" || resp == "v" </span><span class="cov0" title="0">{
+                                                                fmt.Println("Script content:")
+                                                                fmt.Println(currentFieldInfo.Script)
+                                                                fmt.Print("Run this script now? [y/N]: ")
+                                                                resp, _ = reader.ReadString('\n')
+                                                                resp = strings.TrimSpace(strings.ToLower(resp))
+                                                        }</span>
+                                                        <span class="cov0" title="0">if resp == "y" || resp == "yes" </span><span class="cov0" title="0">{
+                                                                finalVal = script.RunAuto(currentFieldInfo.Script, outputLines, envVars, resolvedVars, key)
+                                                        }</span> else<span class="cov0" title="0"> {
+                                                                fmt.Println("Skipped script.")
+                                                                finalVal = existingValue
+                                                        }</span>
+                                                }
+                                                <span class="cov0" title="0">currentFieldInfo = nil</span>
+                                        } else<span class="cov0" title="0"> {
+                                                label := currentFieldInfo.Label
+                                                if label == "" </span><span class="cov0" title="0">{
+                                                        label = key
+                                                }</span>
+                                                <span class="cov0" title="0">if conflictSuffix != "" </span><span class="cov0" title="0">{
+                                                        label += conflictSuffix
+                                                }</span>
+                                                <span class="cov0" title="0">val, err := prompt.ForValue(currentFieldInfo, label, existingValue)
+                                                if err != nil </span><span class="cov0" title="0">{
+                                                        return nil, err
+                                                }</span>
+                                                <span class="cov0" title="0">finalVal = val
+                                                currentFieldInfo = nil</span>
+                                        }
+                                case !hasDSL || key == "PLAIN_TEXT_VAR":<span class="cov0" title="0">
+                                        label := key
+                                        if conflictSuffix != "" </span><span class="cov0" title="0">{
+                                                label += conflictSuffix
+                                        }</span>
+                                        <span class="cov0" title="0">val, err := prompt.Input(label, existingValue)
+                                        if err != nil </span><span class="cov0" title="0">{
+                                                return nil, err
+                                        }</span>
+                                        <span class="cov0" title="0">finalVal = val</span>
+                                default:<span class="cov0" title="0">
+                                        finalVal = existingValue</span>
+                                }
+                        }
+
+                        <span class="cov0" title="0">finalLine := key + "=" + finalVal
+                        outputLines = append(outputLines, finalLine)
+                        resolvedVars[key] = finalVal
+
+                        if _, ok := templateEntries[key]; !ok </span><span class="cov0" title="0">{
+                                templateEntries[key] = &amp;tmplEntry{
+                                        Comments: append([]string{}, pendingComments...),
+                                        Key:      key,
+                                        Line:     finalLine,
+                                }
+                        }</span> else<span class="cov0" title="0"> {
+                                templateEntries[key].Line = finalLine
+                        }</span>
+                        <span class="cov0" title="0">pendingComments = []string{}</span>
+                } else<span class="cov0" title="0"> {
+                        outputLines = append(outputLines, line)
+                        pendingComments = []string{}
+                }</span>
+        }
+
+        <span class="cov0" title="0">if err := scanner.Err(); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">if !mergeMode </span><span class="cov0" title="0">{
+                return outputLines, nil
+        }</span>
+
+        <span class="cov0" title="0">mergedLines := []string{}
+        seenKeys := make(map[string]struct{})
+        kvRe := regexp.MustCompile(`^([^=]+)=(.*)$`)
+
+        for _, line := range existingFileLines </span><span class="cov0" title="0">{
+                if m := kvRe.FindStringSubmatch(line); len(m) &gt; 2 </span><span class="cov0" title="0">{
+                        k := m[1]
+                        if entry, ok := templateEntries[k]; ok </span><span class="cov0" title="0">{
+                                mergedLines = append(mergedLines, entry.Line)
+                                seenKeys[k] = struct{}{}
+                                continue</span>
+                        }
+                        <span class="cov0" title="0">mergedLines = append(mergedLines, line)
+                        seenKeys[k] = struct{}{}</span>
+                } else<span class="cov0" title="0"> {
+                        mergedLines = append(mergedLines, line)
+                }</span>
+        }
+
+        <span class="cov0" title="0">for k, entry := range templateEntries </span><span class="cov0" title="0">{
+                if _, ok := seenKeys[k]; ok </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">for _, c := range entry.Comments </span><span class="cov0" title="0">{
+                        mergedLines = append(mergedLines, c)
+                }</span>
+                <span class="cov0" title="0">mergedLines = append(mergedLines, entry.Line)</span>
+        }
+
+        <span class="cov0" title="0">return mergedLines, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package prompt
+
+import (
+        "bufio"
+        "fmt"
+        "os"
+        "regexp"
+        "strings"
+
+        "golang.org/x/term"
+
+        "github.com/rahuldhole/xenv/app/field"
+)
+
+func ForValue(f *field.Info, label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        var value string
+        var err error
+        for </span><span class="cov0" title="0">{
+                switch f.Type </span>{
+                case field.TextField:<span class="cov0" title="0">
+                        value, err = Text(label, defaultValue, f.Pattern)</span>
+                case field.NumberField:<span class="cov0" title="0">
+                        value, err = Number(label, defaultValue)</span>
+                case field.FloatField:<span class="cov0" title="0">
+                        value, err = Float(label, defaultValue)</span>
+                case field.DateField:<span class="cov0" title="0">
+                        value, err = Date(label, defaultValue, f.Pattern)</span>
+                case field.DateTimeField:<span class="cov0" title="0">
+                        value, err = Text(label+" (YYYY-MM-DD HH:MM)", defaultValue, `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$`)</span>
+                case field.FileField:<span class="cov0" title="0">
+                        value, err = File(label, defaultValue)</span>
+                case field.URLField:<span class="cov0" title="0">
+                        value, err = URL(label, defaultValue)</span>
+                case field.PasswordField:<span class="cov0" title="0">
+                        value, err = Password(label, defaultValue)</span>
+                case field.SelectField:<span class="cov0" title="0">
+                        value, err = Select(label, f.Options, defaultValue)</span>
+                case field.BooleanField:<span class="cov0" title="0">
+                        value, err = Boolean(label, defaultValue)</span>
+                case field.ListField:<span class="cov0" title="0">
+                        value, err = List(label, defaultValue)</span>
+                case field.ButtonField:<span class="cov0" title="0">
+                        value, err = Button(label, defaultValue)</span>
+                case field.CheckboxField:<span class="cov0" title="0">
+                        value, err = Boolean(label, defaultValue)</span>
+                case field.ColorField:<span class="cov0" title="0">
+                        value, err = Color(label, defaultValue)</span>
+                case field.EmailField:<span class="cov0" title="0">
+                        value, err = Email(label, defaultValue)</span>
+                case field.ImageField:<span class="cov0" title="0">
+                        value, err = Image(label, defaultValue)</span>
+                case field.MonthField:<span class="cov0" title="0">
+                        value, err = Month(label, defaultValue)</span>
+                case field.RadioField:<span class="cov0" title="0">
+                        value, err = Radio(label, f.Options, defaultValue)</span>
+                case field.RangeField:<span class="cov0" title="0">
+                        value, err = Range(label, defaultValue)</span>
+                case field.ResetField:<span class="cov0" title="0">
+                        value, err = Reset(label, f.Default)</span>
+                case field.TelField:<span class="cov0" title="0">
+                        value, err = Tel(label, defaultValue)</span>
+                case field.TimeField:<span class="cov0" title="0">
+                        value, err = Time(label, defaultValue)</span>
+                case field.WeekField:<span class="cov0" title="0">
+                        value, err = Week(label, defaultValue)</span>
+                default:<span class="cov0" title="0">
+                        value = defaultValue
+                        err = nil</span>
+                }
+                <span class="cov0" title="0">if err != nil </span><span class="cov0" title="0">{
+                        return "", err
+                }</span>
+                <span class="cov0" title="0">if !f.Required || strings.TrimSpace(value) != "" </span><span class="cov0" title="0">{
+                        return value, nil
+                }</span>
+                <span class="cov0" title="0">fmt.Println("This field is required. Please enter a value.")</span>
+        }
+}
+
+func Text(label, defaultValue, pattern string) (string, error) <span class="cov0" title="0">{
+        reader := bufio.NewReader(os.Stdin)
+        for </span><span class="cov0" title="0">{
+                prompt := label
+                if defaultValue != "" </span><span class="cov0" title="0">{
+                        prompt += fmt.Sprintf(" [%s]", defaultValue)
+                }</span>
+                <span class="cov0" title="0">prompt += ": "
+                fmt.Print(prompt)
+
+                input, _ := reader.ReadString('\n')
+                input = strings.TrimSpace(input)
+
+                if input == "" </span><span class="cov0" title="0">{
+                        return defaultValue, nil
+                }</span>
+
+                <span class="cov0" title="0">if pattern != "" </span><span class="cov0" title="0">{
+                        matched, err := regexp.MatchString(pattern, input)
+                        if err != nil </span><span class="cov0" title="0">{
+                                fmt.Printf("Invalid pattern: %v\n", err)
+                                continue</span>
+                        }
+                        <span class="cov0" title="0">if !matched </span><span class="cov0" title="0">{
+                                fmt.Printf("Invalid input. Must match pattern: %s\n", pattern)
+                                continue</span>
+                        }
+                }
+
+                <span class="cov0" title="0">return input, nil</span>
+        }
+}
+
+func Number(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        reader := bufio.NewReader(os.Stdin)
+        for </span><span class="cov0" title="0">{
+                prompt := label
+                if defaultValue != "" </span><span class="cov0" title="0">{
+                        prompt += fmt.Sprintf(" [%s]", defaultValue)
+                }</span>
+                <span class="cov0" title="0">prompt += ": "
+                fmt.Print(prompt)
+
+                input, _ := reader.ReadString('\n')
+                input = strings.TrimSpace(input)
+
+                if input == "" </span><span class="cov0" title="0">{
+                        return defaultValue, nil
+                }</span>
+
+                <span class="cov0" title="0">matched, _ := regexp.MatchString(`^-?\d+$`, input)
+                if !matched </span><span class="cov0" title="0">{
+                        fmt.Println("Invalid input. Must be a valid integer number.")
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">return input, nil</span>
+        }
+}
+
+func Float(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        reader := bufio.NewReader(os.Stdin)
+        for </span><span class="cov0" title="0">{
+                prompt := label
+                if defaultValue != "" </span><span class="cov0" title="0">{
+                        prompt += fmt.Sprintf(" [%s]", defaultValue)
+                }</span>
+                <span class="cov0" title="0">prompt += ": "
+                fmt.Print(prompt)
+
+                input, _ := reader.ReadString('\n')
+                input = strings.TrimSpace(input)
+
+                if input == "" </span><span class="cov0" title="0">{
+                        return defaultValue, nil
+                }</span>
+
+                <span class="cov0" title="0">matched, _ := regexp.MatchString(`^-?\d+\.?\d*$`, input)
+                if !matched </span><span class="cov0" title="0">{
+                        fmt.Println("Invalid input. Must be a valid floating point number.")
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">return input, nil</span>
+        }
+}
+
+func Date(label, defaultValue, pattern string) (string, error) <span class="cov0" title="0">{
+        reader := bufio.NewReader(os.Stdin)
+        if pattern == "" </span><span class="cov0" title="0">{
+                pattern = `^\d{4}-\d{2}-\d{2}$`
+        }</span>
+
+        <span class="cov0" title="0">for </span><span class="cov0" title="0">{
+                prompt := label
+                if defaultValue != "" </span><span class="cov0" title="0">{
+                        prompt += fmt.Sprintf(" [%s]", defaultValue)
+                }</span>
+                <span class="cov0" title="0">prompt += ": "
+                fmt.Print(prompt)
+
+                input, _ := reader.ReadString('\n')
+                input = strings.TrimSpace(input)
+
+                if input == "" </span><span class="cov0" title="0">{
+                        return defaultValue, nil
+                }</span>
+
+                <span class="cov0" title="0">matched, err := regexp.MatchString(pattern, input)
+                if err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("Invalid pattern: %v\n", err)
+                        continue</span>
+                }
+                <span class="cov0" title="0">if !matched </span><span class="cov0" title="0">{
+                        fmt.Printf("Invalid date format. Expected pattern: %s (e.g., YYYY-MM-DD)\n", pattern)
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">return input, nil</span>
+        }
+}
+
+func File(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        reader := bufio.NewReader(os.Stdin)
+        for </span><span class="cov0" title="0">{
+                prompt := label
+                if defaultValue != "" </span><span class="cov0" title="0">{
+                        prompt += fmt.Sprintf(" [%s]", defaultValue)
+                }</span>
+                <span class="cov0" title="0">prompt += ": "
+                fmt.Print(prompt)
+
+                input, _ := reader.ReadString('\n')
+                input = strings.TrimSpace(input)
+
+                if input == "" </span><span class="cov0" title="0">{
+                        return defaultValue, nil
+                }</span>
+
+                <span class="cov0" title="0">matched, _ := regexp.MatchString(`^[\/~\.]?[\w\-\.\/]+$`, input)
+                if !matched </span><span class="cov0" title="0">{
+                        fmt.Println("Invalid input. Must be a valid file path.")
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">return input, nil</span>
+        }
+}
+
+func URL(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        reader := bufio.NewReader(os.Stdin)
+        for </span><span class="cov0" title="0">{
+                prompt := label
+                if defaultValue != "" </span><span class="cov0" title="0">{
+                        prompt += fmt.Sprintf(" [%s]", defaultValue)
+                }</span>
+                <span class="cov0" title="0">prompt += ": "
+                fmt.Print(prompt)
+
+                input, _ := reader.ReadString('\n')
+                input = strings.TrimSpace(input)
+
+                if input == "" </span><span class="cov0" title="0">{
+                        return defaultValue, nil
+                }</span>
+
+                <span class="cov0" title="0">matched, _ := regexp.MatchString(`^https?:\/\/[^\s]+$`, input)
+                if !matched </span><span class="cov0" title="0">{
+                        fmt.Println("Invalid input. Must be a valid URL (http:// or https://).")
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">return input, nil</span>
+        }
+}
+
+func Input(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        prompt := label
+        if defaultValue != "" </span><span class="cov0" title="0">{
+                prompt += fmt.Sprintf(" [%s]", defaultValue)
+        }</span>
+        <span class="cov0" title="0">prompt += ": "
+        fmt.Print(prompt)
+        reader := bufio.NewReader(os.Stdin)
+        input, _ := reader.ReadString('\n')
+        input = strings.TrimSpace(input)
+        if input == "" </span><span class="cov0" title="0">{
+                return defaultValue, nil
+        }</span>
+        <span class="cov0" title="0">return input, nil</span>
+}
+
+func Password(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        prompt := label
+        if defaultValue != "" </span><span class="cov0" title="0">{
+                prompt += " [press enter to keep current]: "
+        }</span> else<span class="cov0" title="0"> {
+                prompt += ": "
+        }</span>
+        <span class="cov0" title="0">fmt.Print(prompt)
+        passBytes, _ := term.ReadPassword(int(os.Stdin.Fd()))
+        fmt.Println()
+        pass := strings.TrimSpace(string(passBytes))
+        if pass == "" </span><span class="cov0" title="0">{
+                return defaultValue, nil
+        }</span>
+        <span class="cov0" title="0">return pass, nil</span>
+}
+
+func Select(label string, options []string, defaultValue string) (string, error) <span class="cov0" title="0">{
+        reader := bufio.NewReader(os.Stdin)
+        for </span><span class="cov0" title="0">{
+                fmt.Println(label + ":")
+                for i, opt := range options </span><span class="cov0" title="0">{
+                        if opt == defaultValue </span><span class="cov0" title="0">{
+                                fmt.Printf("  %d) %s (current)\n", i+1, opt)
+                        }</span> else<span class="cov0" title="0"> {
+                                fmt.Printf("  %d) %s\n", i+1, opt)
+                        }</span>
+                }
+                <span class="cov0" title="0">fmt.Printf("Select [1-%d]: ", len(options))
+                input, _ := reader.ReadString('\n')
+                input = strings.TrimSpace(input)
+                if input == "" </span><span class="cov0" title="0">{
+                        return defaultValue, nil
+                }</span>
+                <span class="cov0" title="0">var sel int
+                if _, err := fmt.Sscanf(input, "%d", &amp;sel); err == nil &amp;&amp; sel &gt;= 1 &amp;&amp; sel &lt;= len(options) </span><span class="cov0" title="0">{
+                        return options[sel-1], nil
+                }</span>
+                <span class="cov0" title="0">fmt.Println("Invalid selection, try again.")</span>
+        }
+}
+
+func Boolean(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        reader := bufio.NewReader(os.Stdin)
+        for </span><span class="cov0" title="0">{
+                defaultBool := strings.EqualFold(defaultValue, "true") || strings.EqualFold(defaultValue, "yes") || defaultValue == "1"
+                prompt := label
+                if defaultBool </span><span class="cov0" title="0">{
+                        prompt += " [Y/n]: "
+                }</span> else<span class="cov0" title="0"> {
+                        prompt += " [y/N]: "
+                }</span>
+                <span class="cov0" title="0">fmt.Print(prompt)
+
+                input, _ := reader.ReadString('\n')
+                input = strings.TrimSpace(strings.ToLower(input))
+
+                switch input </span>{
+                case "y", "yes", "true":<span class="cov0" title="0">
+                        return "true", nil</span>
+                case "n", "no", "false":<span class="cov0" title="0">
+                        return "false", nil</span>
+                case "":<span class="cov0" title="0">
+                        if defaultBool </span><span class="cov0" title="0">{
+                                return "true", nil
+                        }</span>
+                        <span class="cov0" title="0">return "false", nil</span>
+                default:<span class="cov0" title="0">
+                        fmt.Println("Invalid input. Must be true/false, yes/no, or y/n.")</span>
+                }
+        }
+}
+
+func List(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        reader := bufio.NewReader(os.Stdin)
+        for </span><span class="cov0" title="0">{
+                prompt := label + " (comma-separated)"
+                if defaultValue != "" </span><span class="cov0" title="0">{
+                        prompt += fmt.Sprintf(" [%s]", defaultValue)
+                }</span>
+                <span class="cov0" title="0">prompt += ": "
+                fmt.Print(prompt)
+
+                input, _ := reader.ReadString('\n')
+                input = strings.TrimSpace(input)
+
+                if input == "" </span><span class="cov0" title="0">{
+                        return defaultValue, nil
+                }</span>
+
+                <span class="cov0" title="0">matched, _ := regexp.MatchString(`^[^,]+(,[^,]+)*$`, input)
+                if !matched </span><span class="cov0" title="0">{
+                        fmt.Println("Invalid input. Must be comma-separated values (e.g., value1,value2,value3).")
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">return input, nil</span>
+        }
+}
+
+func Button(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        fmt.Printf("%s [button, no input]: %s\n", label, defaultValue)
+        return defaultValue, nil
+}</span>
+
+func Color(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        return Text(label+" (color hex or name)", defaultValue, "")
+}</span>
+
+func Email(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        return Text(label+" (email)", defaultValue, `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+}</span>
+
+func Image(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        return File(label+" (image path)", defaultValue)
+}</span>
+
+func Month(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        return Text(label+" (YYYY-MM)", defaultValue, `^\d{4}-\d{2}$`)
+}</span>
+
+func Radio(label string, options []string, defaultValue string) (string, error) <span class="cov0" title="0">{
+        return Select(label+" (radio)", options, defaultValue)
+}</span>
+
+func Range(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        return Number(label+" (range)", defaultValue)
+}</span>
+
+func Reset(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        fmt.Printf("%s [reset, default=%s]\n", label, defaultValue)
+        return defaultValue, nil
+}</span>
+
+func Tel(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        return Text(label+" (telephone)", defaultValue, `^\+?[0-9\- ]+$`)
+}</span>
+
+func Time(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        return Text(label+" (HH:MM)", defaultValue, `^\d{2}:\d{2}$`)
+}</span>
+
+func Week(label, defaultValue string) (string, error) <span class="cov0" title="0">{
+        return Text(label+" (YYYY-Www)", defaultValue, `^\d{4}-W\d{2}$`)
+}</span>
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package script
+
+import (
+        "fmt"
+        "os"
+        "os/exec"
+        "regexp"
+        "strings"
+)
+
+func RunAuto(script string, outputLines []string, envVars map[string]string, resolved map[string]string, key string) string <span class="cov8" title="1">{
+        env := os.Environ()
+        kvRe := regexp.MustCompile(`^([^=]+)=(.*)$`)
+        for _, l := range outputLines </span><span class="cov8" title="1">{
+                if m := kvRe.FindStringSubmatch(l); len(m) &gt; 2 </span><span class="cov8" title="1">{
+                        env = append(env, fmt.Sprintf("%s=%s", m[1], m[2]))
+                }</span>
+        }
+        <span class="cov8" title="1">for k, v := range envVars </span><span class="cov8" title="1">{
+                if _, ok := resolved[k]; !ok </span><span class="cov8" title="1">{
+                        env = append(env, fmt.Sprintf("%s=%s", k, v))
+                }</span>
+        }
+        <span class="cov8" title="1">cmd := exec.Command("sh", "-c", script)
+        cmd.Env = env
+        out, err := cmd.Output()
+        if err != nil </span><span class="cov0" title="0">{
+                fmt.Printf("Error running script for %s: %v\n", key, err)
+                return ""
+        }</span>
+        <span class="cov8" title="1">return strings.TrimSpace(string(out))</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package main
+
+import (
+        "bufio"
+        "fmt"
+        "os"
+        "path/filepath"
+        "strings"
+
+        "github.com/rahuldhole/xenv/app/processor"
+)
+
+func main() <span class="cov8" title="1">{
+        if len(os.Args) == 1 </span><span class="cov0" title="0">{
+                printHelp()
+                return
+        }</span>
+        <span class="cov8" title="1">for _, a := range os.Args[1:] </span><span class="cov8" title="1">{
+                if a == "-h" || a == "--help" </span><span class="cov8" title="1">{
+                        printHelp()
+                        return
+                }</span>
+        }
+
+        <span class="cov0" title="0">if len(os.Args) &lt; 2 </span><span class="cov0" title="0">{
+                fmt.Printf("Usage: %s &lt;form-file&gt; [-o|--output &lt;file&gt;] [-d|--defaults] [-r|--run-scripts] [-m|--merge] [-f|--force] [-h|--help]\n", os.Args[0])
+                os.Exit(1)
+        }</span>
+
+        <span class="cov0" title="0">formFile := os.Args[1]
+        outputFile := ""
+        defaultsMode := false
+        allScripts := false
+        preMerge := false
+        forceOverwrite := false
+
+        for i := 2; i &lt; len(os.Args); i++ </span><span class="cov0" title="0">{
+                arg := os.Args[i]
+                switch arg </span>{
+                case "-o", "--output":<span class="cov0" title="0">
+                        if i+1 &lt; len(os.Args) </span><span class="cov0" title="0">{
+                                outputFile = os.Args[i+1]
+                                i++
+                        }</span> else<span class="cov0" title="0"> {
+                                fmt.Println("Error: -o/--output requires a value")
+                                os.Exit(1)
+                        }</span>
+                case "-d", "--defaults":<span class="cov0" title="0">
+                        defaultsMode = true</span>
+                case "-r", "--run-scripts":<span class="cov0" title="0">
+                        allScripts = true</span>
+                case "-m", "--merge":<span class="cov0" title="0">
+                        preMerge = true</span>
+                case "-f", "--force":<span class="cov0" title="0">
+                        forceOverwrite = true</span>
+                case "-h", "--help":<span class="cov0" title="0">
+                        printHelp()
+                        return</span>
+                default:<span class="cov0" title="0">
+                        fmt.Printf("Unknown flag: %s\n\n", arg)
+                        printHelp()
+                        os.Exit(1)</span>
+                }
+        }
+
+        <span class="cov0" title="0">if outputFile == "" </span><span class="cov0" title="0">{
+                outputFile = processor.DetermineOutputFile(formFile)
+        }</span>
+
+        <span class="cov0" title="0">if _, err := os.Stat(formFile); os.IsNotExist(err) </span><span class="cov0" title="0">{
+                fmt.Printf("Error: Form file '%s' not found.\n", formFile)
+                os.Exit(1)
+        }</span>
+
+        <span class="cov0" title="0">if preMerge &amp;&amp; forceOverwrite </span><span class="cov0" title="0">{
+                fmt.Println("Error: Cannot use both --merge (-m) and --force (-f) together.")
+                os.Exit(1)
+        }</span>
+
+        <span class="cov0" title="0">mergeMode := false
+        
+        if _, err := os.Stat(outputFile); err == nil </span><span class="cov0" title="0">{
+                if forceOverwrite </span><span class="cov0" title="0">{
+                        fmt.Println("Overwrite (force) selected.")
+                }</span> else<span class="cov0" title="0"> if preMerge </span><span class="cov0" title="0">{
+                        mergeMode = true
+                        fmt.Println("Merge (flag) selected. Existing values will be used as 'current' and conflicts shown.")
+                }</span> else<span class="cov0" title="0"> {
+                        fmt.Printf("Output file '%s' already exists. Overwrite, merge, or cancel? [y/N/m (merge)]: ", outputFile)
+                        reader := bufio.NewReader(os.Stdin)
+                        response, _ := reader.ReadString('\n')
+                        response = strings.TrimSpace(strings.ToLower(response))
+                        switch response </span>{
+                        case "y", "yes":<span class="cov0" title="0">
+                                fmt.Println("Overwrite selected.")</span>
+                        case "m", "merge":<span class="cov0" title="0">
+                                mergeMode = true
+                                fmt.Println("Merge selected. Existing values will be used as 'current' and conflicts shown.")</span>
+                        default:<span class="cov0" title="0">
+                                fmt.Println("Operation cancelled.")
+                                os.Exit(0)</span>
+                        }
+                }
+        }
+
+        <span class="cov0" title="0">hasDSL := processor.CheckForDSL(formFile)
+        fmt.Printf("Interactive configuration for %s\n", filepath.Base(formFile))
+        fmt.Println(strings.Repeat("-", 50))
+
+        outputLines, err := processor.ProcessFormFile(formFile, outputFile, hasDSL, mergeMode, defaultsMode, allScripts)
+        if err != nil </span><span class="cov0" title="0">{
+                fmt.Printf("Error processing form file: %v\n", err)
+                os.Exit(1)
+        }</span>
+
+        <span class="cov0" title="0">err = os.WriteFile(outputFile, []byte(strings.Join(outputLines, "\n")+"\n"), 0644)
+        if err != nil </span><span class="cov0" title="0">{
+                fmt.Printf("Error writing to output file: %v\n", err)
+                os.Exit(1)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Println(strings.Repeat("-", 50))
+        fmt.Printf("Configuration saved to %s\n", outputFile)</span>
+}
+
+func printHelp() <span class="cov8" title="1">{
+        fmt.Println("xenv - interactive/automated environment file generator")
+        fmt.Println()
+        fmt.Println("Usage:")
+        fmt.Println("  xenv &lt;form-file&gt; [flags]")
+        fmt.Println()
+        fmt.Println("Flags:")
+        fmt.Println("  -o, --output &lt;file&gt;   Write to specific output file (default: dot-prefixed template name)")
+        fmt.Println("  -d, --defaults        Use existing / template defaults without interactive prompts")
+        fmt.Println("  -r, --run-scripts     Run all inline scripts automatically (no confirmations)")
+        fmt.Println("  -m, --merge           Merge with existing output (preserve unknown keys, show conflicts)")
+        fmt.Println("  -f, --force           Overwrite existing output file without prompting")
+        fmt.Println("  -h, --help            Show this help and exit")
+        fmt.Println()
+        fmt.Println("Rules:")
+        fmt.Println("  * --merge and --force are mutually exclusive.")
+        fmt.Println("  * If neither --merge nor --force is provided and the output file exists, you will be prompted.")
+        fmt.Println("  * Combine --defaults with --run-scripts for a fully automated generation including scripts.")
+        fmt.Println()
+        fmt.Println("Examples:")
+        fmt.Println("  xenv config.xenv # You can use any file extension (.xenv, .template, .example, etc.)")
+        fmt.Println("  xenv config.xenv -d -f")
+        fmt.Println("  xenv config.xenv -m -r")
+        fmt.Println("  xenv config.xenv -o .env.production -d -r")
+        fmt.Println()
+        fmt.Println("Inline Scripts:")
+        fmt.Println("  Add script=\"...\" or script=`...` to a directive (e.g. @text, @button).")
+        fmt.Println("  Use -r / --run-scripts to auto-run all scripts (including in --defaults mode).")
+        fmt.Println()
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

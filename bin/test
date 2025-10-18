@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# xenv Test Runner
+# Runs all Go tests with coverage
+
+set -e
+
+# Run tests excluding the tests directory (which only contains output files)
+go test $(go list ./... | grep -v '/tests') -v -coverprofile=tests/coverage.out
+
+# Generate HTML coverage report
+go tool cover -html=tests/coverage.out -o tests/coverage.html
+
+echo ""
+echo "Coverage report generated at tests/coverage.html"
